@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { submitProperty } from '../src/api';
+import { counts } from '../src/logic';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
@@ -11,9 +12,7 @@ export default function Submit() {
   const [result, setResult] = useState<'sending' | 'done' | string>('');
   const { photos = {}, skips = {}, notes = [], property } = house ?? {};
   const all = Object.values(photos);
-  const failed = all.filter((p) => !p.uploaded && p.error).length;
-  const waiting = all.filter((p) => !p.uploaded).length - failed;
-  const shot = new Set(all.map((p) => p.item));
+  const { waiting, failed, shot } = counts(photos, skips, checklist ?? null);
   const missing = (checklist ?? []).filter((i) => i.required && !shot.has(i.key) && !skips[i.key]);
 
   // ponytail: kicking every 5s overrides the uploader's 60s backoff while this screen is open; fine for one phone.

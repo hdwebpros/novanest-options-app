@@ -1,6 +1,6 @@
 import { Link, Stack, router } from 'expo-router';
 import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
-import { day } from '../src/logic';
+import { counts, day } from '../src/logic';
 import { removeHouse, set, useStore, type House } from '../src/store';
 
 export default function Houses() {
@@ -12,16 +12,10 @@ export default function Houses() {
   ].filter((x) => x.data.length);
 
   function line(h: House) {
-    const photos = Object.values(h.photos);
-    const failed = photos.filter((p) => !p.uploaded && p.error).length;
-    const waiting = photos.filter((p) => !p.uploaded).length - failed;
-    const done = checklist?.filter((i) => h.skips[i.key] || photos.some((p) => p.item === i.key)).length;
+    const n = Object.keys(h.photos).length;
+    const { waiting, failed, done } = counts(h.photos, h.skips, checklist);
     return [
-      h.submittedAt
-        ? `Submitted ${day(h.submittedAt)} · ${photos.length} photos`
-        : checklist
-          ? `${done} of ${checklist.length} shots`
-          : `${photos.length} photos`,
+      h.submittedAt ? `Submitted ${day(h.submittedAt)} · ${n} photos` : checklist ? `${done} of ${checklist.length} shots` : `${n} photos`,
       waiting > 0 && `${waiting} waiting`,
       failed > 0 && `${failed} failed`,
     ]

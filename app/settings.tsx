@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
-import { api } from '../src/api';
+import { api, getSecret, saveSecret } from '../src/api';
 import { setAuthFailed } from '../src/store';
 import { kick } from '../src/uploader';
 
@@ -14,11 +13,11 @@ export default function Settings() {
 
   useEffect(() => {
     if (fromLink) return setSecret(fromLink);
-    SecureStore.getItemAsync('secret').then((v) => setSecret(v ?? ''));
+    getSecret().then((v) => setSecret(v ?? ''));
   }, [fromLink]);
 
   async function save() {
-    await SecureStore.setItemAsync('secret', secret.trim());
+    await saveSecret(secret.trim());
     setResult('Saved');
     setAuthFailed(false);
     kick();
@@ -26,7 +25,7 @@ export default function Settings() {
 
   async function test() {
     setResult('Testing…');
-    await SecureStore.setItemAsync('secret', secret.trim());
+    await saveSecret(secret.trim());
     try {
       const res = await api('/api/options/pending');
       setResult(res.status === 200 ? 'OK' : String(res.status));

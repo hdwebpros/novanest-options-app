@@ -5,6 +5,7 @@ import type { Property } from './store';
 export const BASE = 'https://www.novanest.homes';
 
 export const getSecret = () => SecureStore.getItemAsync('secret');
+export const saveSecret = (v: string) => SecureStore.setItemAsync('secret', v);
 
 export async function authHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${(await getSecret()) ?? ''}` };

@@ -26,12 +26,6 @@ export function kick() {
   });
 }
 
-function retryLater() {
-  clearTimeout(timer);
-  timer = setTimeout(kick, BACKOFF[Math.min(failures, BACKOFF.length - 1)]);
-  failures++;
-}
-
 async function run() {
   const skip = new Set<string>(); // poison photos given up on for this run only
   while (true) {
@@ -90,7 +84,8 @@ async function run() {
         return; // same as a photo 401/403
       }
       // network failure, 5xx, 408/429, or create failed: stop and back off. Same ids on retry.
-      retryLater();
+      clearTimeout(timer);
+      timer = setTimeout(kick, BACKOFF[Math.min(failures++, BACKOFF.length - 1)]);
       return;
     }
   }

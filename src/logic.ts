@@ -3,6 +3,23 @@ export type Item = { key: string; section: string; label: string; instruction: s
 export type Reason = 'not_there' | 'no_access' | 'unsafe';
 export type Photo = { id: string; item: string; uploaded: boolean; attempts: number; at: number; error?: number };
 
+export const SKIPS: [string, Reason][] = [
+  ['Not there', 'not_there'],
+  ["Can't get to it", 'no_access'],
+  ['Unsafe', 'unsafe'],
+];
+
+// Upload queue and checklist totals for one house. failed = gave up (error set); waiting = not uploaded, not failed.
+// shot = item keys with at least one photo; done = checklist items shot or skipped.
+export function counts(photos: Record<string, Photo>, skips: Record<string, Reason>, checklist: Item[] | null) {
+  const all = Object.values(photos);
+  const uploaded = all.filter((p) => p.uploaded).length;
+  const failed = all.filter((p) => !p.uploaded && p.error).length;
+  const shot = new Set(all.map((p) => p.item));
+  const done = (checklist ?? []).filter((i) => shot.has(i.key) || skips[i.key]).length;
+  return { uploaded, waiting: all.length - uploaded - failed, failed, done, shot };
+}
+
 // The item picked in the room list (even if already shot: a second photo is fine), else the first item
 // with no photo and no skip, or null when all are done.
 export function nextItem(

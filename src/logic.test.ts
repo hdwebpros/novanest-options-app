@@ -2,7 +2,7 @@
 // Run: node --test src/logic.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextItem, nextPending, pickSize, progress, type Item, type Photo } from './logic.ts';
+import { counts, nextItem, nextPending, pickSize, progress, type Item, type Photo } from './logic.ts';
 
 const item = (key: string, section: string): Item => ({ key, section, label: key, instruction: '', required: true, category: 'c' });
 const list = [item('a', 'Exterior'), item('b', 'Exterior'), item('c', 'Kitchen')];
@@ -41,4 +41,11 @@ test('pickSize prefers ~2000 long edge, >=1600', () => {
   assert.equal(pickSize(['4000x3000', '2048x1536', '1600x1200']), '2048x1536');
   assert.equal(pickSize(['1280x720', '640x480']), '1280x720');
   assert.equal(pickSize(['Photo']), undefined);
+});
+
+test('counts splits uploaded / waiting / failed, done = shot or skipped', () => {
+  const photos = { u: photo('u', 'a', 1, true), w: photo('w', 'a', 2), f: { ...photo('f', 'c', 3), error: -1 } };
+  const { shot, ...rest } = counts(photos, { b: 'unsafe' }, list);
+  assert.deepEqual(rest, { uploaded: 1, waiting: 1, failed: 1, done: 3 });
+  assert.deepEqual([...shot].sort(), ['a', 'c']);
 });

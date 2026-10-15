@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "novanest-field",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "homes.novanest.field",
       "supportsTablet": false,

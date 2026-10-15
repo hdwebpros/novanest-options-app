@@ -1,10 +1,10 @@
 import { Link, Stack, router } from 'expo-router';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
-import { day, type Item } from '../src/logic';
+import { counts, day, SKIPS, type Item, type Reason } from '../src/logic';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
-const REASON = { not_there: 'not there', no_access: "can't get to it", unsafe: 'unsafe' };
+const REASON = Object.fromEntries(SKIPS.map(([label, r]) => [r, label.toLowerCase()])) as Record<Reason, string>;
 
 export default function Rooms() {
   const { checklist } = useStore();
@@ -12,8 +12,7 @@ export default function Rooms() {
   if (!house) return null;
   const { photos, skips, property, submittedAt } = house;
   const all = Object.values(photos);
-  const uploaded = all.filter((p) => p.uploaded).length;
-  const failed = all.filter((p) => !p.uploaded && p.error).length;
+  const { uploaded, waiting, failed } = counts(photos, skips, checklist);
   const count: Record<string, number> = {};
   for (const p of all) count[p.item] = (count[p.item] ?? 0) + 1;
 
@@ -35,7 +34,7 @@ export default function Rooms() {
       <Stack.Screen options={{ title: property.address }} />
       <View style={s.queue}>
         <Text>
-          {uploaded} uploaded, {all.length - uploaded - failed} waiting
+          {uploaded} uploaded, {waiting} waiting
         </Text>
         {failed > 0 && (
           <Pressable onPress={kick}>

@@ -7,15 +7,9 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { ExpoSpeechRecognitionModule as Speech, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { fetchChecklist } from '../src/api';
-import { nextItem, pickSize, progress, type Reason } from '../src/logic';
+import { counts, nextItem, pickSize, progress, SKIPS } from '../src/logic';
 import { get, patchHouse, photoFile, photosDir, set, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
-
-const SKIPS: [string, Reason][] = [
-  ['Not there', 'not_there'],
-  ["Can't get to it", 'no_access'],
-  ['Unsafe', 'unsafe'],
-];
 
 // Flat GPS* keys with signed values: expo-camera's iOS code (CameraPhotoCapture.swift createGPSDict) builds the
 // {GPS} dictionary itself, taking abs() and deriving the N/S, E/W refs from the sign. Never log these.
@@ -119,9 +113,7 @@ export default function Capture() {
   const { photos, skips, property, notes, current, submittedAt } = house;
   const hid = property.id;
 
-  const all = Object.values(photos);
-  const failed = all.filter((p) => !p.uploaded && p.error).length;
-  const waiting = all.filter((p) => !p.uploaded).length - failed;
+  const { waiting, failed, done } = counts(photos, skips, checklist);
   const header = [
     authFailed && 'Secret is wrong. Tap the gear.',
     waiting > 0 && `${waiting} waiting to upload`,
@@ -172,13 +164,10 @@ export default function Capture() {
 
   const item = nextItem(checklist, photos, skips, current);
   const itemNotes = item ? notes.filter((n) => n.item === item.key).length : 0;
-  const done = checklist.filter((i) => skips[i.key] || all.some((p) => p.item === i.key)).length;
 
   async function onReady() {
     const sizes = (await cam.current?.getAvailablePictureSizesAsync()) ?? [];
-    const size = pickSize(sizes);
-    console.log('pictureSize', size, 'from', sizes);
-    setPictureSize(size);
+    setPictureSize(pickSize(sizes));
   }
 
   async function shoot() {
