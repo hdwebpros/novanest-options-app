@@ -47,7 +47,7 @@ export default function Capture() {
   const [loadFailed, setLoadFailed] = useState<string>();
   const [pictureSize, setPictureSize] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState<string>(); // "✓ Saved: <label>" flash after a shot
+  const [saved, setSaved] = useState<{ id: string; item: string; label: string }>(); // "✓ Saved: <label>" flash + Retake
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(savedTimer.current), []);
   const cam = useRef<CameraView>(null);
@@ -186,14 +186,33 @@ export default function Capture() {
       new File(pic.uri).moveSync(photoFile(id));
       set((st) => ({ ...st, current: undefined, photos: { ...st.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setSaved(`✓ Saved: ${item.label}`);
+      setSaved({ id, item: item.key, label: item.label });
       clearTimeout(savedTimer.current);
-      savedTimer.current = setTimeout(() => setSaved(undefined), 1500);
+      savedTimer.current = setTimeout(() => setSaved(undefined), 5000);
       if (listening && !nextItem(checklist!, get().photos, skips)) Speech.stop(); // last shot: end the note so it saves
       kick();
     } finally {
       setBusy(false);
     }
+  }
+
+  // Not uploaded: drop the photo and its file. Uploaded: no delete API, so just go back to that item for another shot.
+  // The uploader's patchPhoto is a no-op for a removed id, so an upload finishing late can't bring it back.
+  function retake() {
+    if (!saved) return;
+    clearTimeout(savedTimer.current);
+    setSaved(undefined);
+    const p = get().photos[saved.id];
+    if (p && !p.uploaded) {
+      set((st) => {
+        const photos = { ...st.photos };
+        delete photos[p.id];
+        return { ...st, photos, current: p.item };
+      });
+      try {
+        photoFile(p.id).delete();
+      } catch {}
+    } else set((st) => ({ ...st, current: saved.item }));
   }
 
   function mic() {
@@ -228,7 +247,12 @@ export default function Capture() {
           </View>
           <View style={s.info}>
             {saved ? (
-              <Text style={s.saved}>{saved}</Text>
+              <View style={s.savedRow}>
+                <Text style={s.saved}>✓ Saved: {saved.label}</Text>
+                <Pressable onPress={retake} hitSlop={12}>
+                  <Text style={s.retake}>{photos[saved.id]?.uploaded ? 'Shoot again' : 'Retake'}</Text>
+                </Pressable>
+              </View>
             ) : (
               <Pressable onPress={() => router.back()}>
                 <Text style={s.progress}>{progress(checklist, item)}   See all ›</Text>
@@ -290,6 +314,8 @@ const s = StyleSheet.create({
   bar: { height: 3, backgroundColor: '#333' },
   barFill: { height: 3, backgroundColor: '#fff' },
   saved: { color: '#6c6', fontSize: 13, fontWeight: '600' },
+  savedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  retake: { color: '#fff', fontSize: 13, fontWeight: '600' },
   button: { alignSelf: 'stretch', margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
 });
