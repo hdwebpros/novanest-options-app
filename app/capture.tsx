@@ -44,7 +44,7 @@ async function gpsExif(): Promise<Record<string, unknown>> {
 export default function Capture() {
   const { checklist, photos, skips, property, notes, current } = useStore();
   const [perm, setPerm] = useState<'asking' | 'ok' | 'denied'>('asking');
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<string>();
   const [pictureSize, setPictureSize] = useState<string>();
   const [busy, setBusy] = useState(false);
   const cam = useRef<CameraView>(null);
@@ -101,10 +101,12 @@ export default function Capture() {
   }, []);
 
   function loadChecklist() {
-    setLoadFailed(false);
+    setLoadFailed(undefined);
     fetchChecklist()
       .then((items) => set((s) => ({ ...s, checklist: items })))
-      .catch(() => setLoadFailed(true));
+      .catch((e: Error) =>
+        setLoadFailed(/40[13]/.test(e.message) ? 'Secret is missing or wrong. Tap the gear and Test it.' : 'Need internet once to load the checklist.'),
+      );
   }
   useEffect(loadChecklist, []);
 
@@ -145,7 +147,7 @@ export default function Capture() {
     return (
       <View style={s.center}>
         {screen}
-        <Text style={s.msg}>{loadFailed ? 'Need internet once to load the checklist.' : 'Loading checklist…'}</Text>
+        <Text style={s.msg}>{loadFailed ?? 'Loading checklist…'}</Text>
         {loadFailed && (
           <Pressable style={s.small} onPress={loadChecklist}>
             <Text style={s.smallText}>Try again</Text>
