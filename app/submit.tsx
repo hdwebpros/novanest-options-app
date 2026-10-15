@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { submitProperty } from '../src/api';
 import { counts } from '../src/logic';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
+import { AUTH_MSG, c, press, radius, ui } from '../src/ui';
 
 export default function Submit() {
   const { checklist, authFailed } = useStore();
@@ -35,45 +36,48 @@ export default function Submit() {
         patchHouse(property.id, { submittedAt: Date.now() });
         setResult('done');
       } else if (res.status === 409) setResult('The site has no photos for this house yet.');
-      else setResult(`Submit failed (${res.status}). Try again.`);
+      else setResult(`Couldn't submit (error ${res.status}). Try again.`);
     } catch {
       setResult('No connection. Try again.');
     }
   }
 
-  const screen = <Stack.Screen options={{ title: 'Submit' }} />;
+  const screen = <Stack.Screen options={{ title: 'Submit', headerBackTitle: 'Back' }} />;
 
   if (result === 'done')
     return (
-      <ScrollView contentContainerStyle={s.page}>
+      <View style={ui.center}>
         {screen}
-        <Text style={s.big}>Submitted. Emily's house is in the Options queue.</Text>
-        <Pressable style={s.button} onPress={() => router.dismissAll()}>
-          <Text style={s.buttonText}>Done</Text>
+        <Text style={ui.title}>Submitted</Text>
+        <Text style={ui.msg}>The house is on the site, ready for review.</Text>
+        <Pressable style={press(ui.btn, s.wide)} onPress={() => router.dismissAll()}>
+          <Text style={ui.btnText}>Done</Text>
         </Pressable>
-      </ScrollView>
+      </View>
     );
 
   if (!checklist)
     return (
-      <ScrollView contentContainerStyle={s.page}>
+      <View style={ui.center}>
         {screen}
-        <Text>Checklist not loaded yet.</Text>
-      </ScrollView>
+        <Text style={ui.msg}>The checklist hasn’t loaded yet. Open the camera once with internet on.</Text>
+      </View>
     );
 
   if (missing.length)
     return (
-      <ScrollView contentContainerStyle={s.page}>
+      <ScrollView style={ui.page} contentContainerStyle={ui.form}>
         {screen}
-        <Text style={s.big}>Still needed (photo or skip):</Text>
-        {missing.map((i) => (
-          <Text key={i.key} style={s.missing}>
-            {i.section} · {i.label}
-          </Text>
-        ))}
-        <Pressable style={s.button} onPress={() => router.dismissTo('/capture')}>
-          <Text style={s.buttonText}>Back to capture</Text>
+        <Text style={ui.title}>These still need a photo or a skip</Text>
+        <View style={s.card}>
+          {missing.map((i) => (
+            <Text key={i.key} style={[ui.body, s.missing]}>
+              {i.section} · {i.label}
+            </Text>
+          ))}
+        </View>
+        <Pressable style={press(ui.btn, s.gap)} onPress={() => router.dismissTo('/capture')}>
+          <Text style={ui.btnText}>Back to camera</Text>
         </Pressable>
       </ScrollView>
     );
@@ -81,42 +85,44 @@ export default function Submit() {
   const ready = waiting === 0 && !!property?.token && result !== 'sending';
   const confirm = () =>
     failed
-      ? Alert.alert(`${failed} photo${failed > 1 ? 's' : ''} failed to upload`, 'Submit without them?', [
+      ? Alert.alert(`${failed} photo${failed > 1 ? 's' : ''} didn't upload`, 'Submit without them?', [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Submit', onPress: submit },
         ])
       : submit();
   return (
-    <ScrollView contentContainerStyle={s.page}>
+    <ScrollView style={ui.page} contentContainerStyle={ui.form}>
       {screen}
-      <Text style={s.big}>{property?.address}</Text>
-      <Text>
+      <Text style={ui.title}>{property?.address}</Text>
+      <Text style={ui.sub}>
         {all.length} photos · {Object.keys(skips).length} skipped · {notes.length} notes
       </Text>
-      <Text>{waiting ? `Uploading… ${waiting} left` : `${all.length - failed} uploaded`}</Text>
-      {!property?.token && <Text>Creating the house on the site…</Text>}
-      {authFailed && <Text style={s.error}>Secret is wrong. Tap the gear.</Text>}
+      <View style={s.status}>
+        {waiting > 0 && <ActivityIndicator color={c.gray} />}
+        <Text style={ui.body}>{waiting ? `Uploading, ${waiting} left…` : `${all.length - failed} uploaded`}</Text>
+      </View>
+      {!property?.token && <Text style={ui.sub}>Adding the house to the site…</Text>}
+      {authFailed && <Text style={ui.error}>{AUTH_MSG}</Text>}
       {failed > 0 && (
-        <Pressable onPress={kick}>
-          <Text style={s.error}>
-            {failed} photo{failed > 1 ? 's' : ''} failed to upload, tap to retry
+        <Pressable style={press(s.retry)} onPress={kick}>
+          <Text style={ui.error}>
+            {failed} photo{failed > 1 ? 's' : ''} didn’t upload. Tap to try again.
           </Text>
         </Pressable>
       )}
-      <Pressable style={[s.button, !ready && s.disabled]} disabled={!ready} onPress={confirm}>
-        <Text style={s.buttonText}>{result === 'sending' ? 'Submitting…' : 'Submit'}</Text>
+      <Pressable style={press(ui.btn, s.gap, !ready && ui.off)} disabled={!ready} onPress={confirm}>
+        <Text style={ui.btnText}>{result === 'sending' ? 'Submitting…' : 'Submit'}</Text>
       </Pressable>
-      {result && result !== 'sending' && <Text style={s.error}>{result}</Text>}
+      {result && result !== 'sending' && <Text style={ui.error}>{result}</Text>}
     </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  page: { padding: 16, gap: 10 },
-  big: { fontSize: 18, fontWeight: '700' },
-  missing: { fontSize: 16, color: '#d97706' },
-  error: { color: '#b00020', fontWeight: '600' },
-  button: { marginTop: 20, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
-  disabled: { opacity: 0.3 },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  wide: { alignSelf: 'stretch' },
+  gap: { marginTop: 20 },
+  card: { backgroundColor: c.bg, borderRadius: radius, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 4 },
+  missing: { color: c.accent, paddingVertical: 10 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  retry: { minHeight: 44, justifyContent: 'center' },
 });

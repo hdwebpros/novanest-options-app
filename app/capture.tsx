@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Stack, router } from 'expo-router';
-import { ActionSheetIOS, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Stack, router } from 'expo-router';
+import { ActionSheetIOS, ActivityIndicator, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
@@ -10,6 +11,9 @@ import { fetchChecklist } from '../src/api';
 import { counts, nextItem, pickSize, progress, SKIPS } from '../src/logic';
 import { get, patchHouse, photoFile, photosDir, set, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
+import { AUTH_MSG, c, press, ui } from '../src/ui';
+
+const MAX = 1.3; // Dynamic Type cap for the camera overlay, where space is tight
 
 // Flat GPS* keys with signed values: expo-camera's iOS code (CameraPhotoCapture.swift createGPSDict) builds the
 // {GPS} dictionary itself, taking abs() and deriving the N/S, E/W refs from the sign. Never log these.
@@ -47,6 +51,9 @@ export default function Capture() {
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(savedTimer.current), []);
   const cam = useRef<CameraView>(null);
+  const insets = useSafeAreaInsets();
+  const { width, fontScale } = useWindowDimensions();
+  const fs = Math.min(fontScale, MAX);
   const [speechOk, setSpeechOk] = useState(true);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
@@ -104,7 +111,7 @@ export default function Capture() {
     fetchChecklist()
       .then((items) => set((s) => ({ ...s, checklist: items })))
       .catch((e: Error) =>
-        setLoadFailed(/40[13]/.test(e.message) ? 'Secret is missing or wrong. Tap the gear and Test it.' : 'Need internet once to load the checklist.'),
+        setLoadFailed(/40[13]/.test(e.message) ? AUTH_MSG : 'No connection. The checklist needs internet the first time.'),
       );
   }
   useEffect(loadChecklist, []);
@@ -115,10 +122,10 @@ export default function Capture() {
 
   const { waiting, failed, done } = counts(photos, skips, checklist);
   const header = [
-    authFailed && 'Secret is wrong. Tap the gear.',
-    waiting > 0 && `${waiting} waiting to upload`,
-    failed > 0 && `${failed} failed`,
-    waiting > 0 && !property.token && 'house not created yet',
+    authFailed && 'The secret is wrong',
+    waiting > 0 && `${waiting} to upload`,
+    failed > 0 && `${failed} didn't upload`,
+    waiting > 0 && !property.token && 'house not on the site yet',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -127,36 +134,41 @@ export default function Capture() {
       options={{
         headerBackTitle: 'Checklist',
         headerTitle: () => (
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+          <View style={[s.head, { maxWidth: width - 160 }]}>
+            <Text style={s.headTitle} numberOfLines={1}>
               {property.address}
             </Text>
-            {!!header && <Text style={{ fontSize: 12, color: '#666' }}>{header}</Text>}
+            {!!header && (
+              <Text style={[s.headSub, authFailed && { color: c.red }]} numberOfLines={1}>
+                {header}
+              </Text>
+            )}
           </View>
         ),
       }}
     />
   );
 
-  if (perm === 'asking') return <View style={s.center}>{screen}</View>;
+  if (perm === 'asking') return <View style={ui.center}>{screen}</View>;
   if (perm === 'denied')
     return (
-      <View style={s.center}>
+      <View style={ui.center}>
         {screen}
-        <Text style={s.msg}>Camera access is off.</Text>
-        <Pressable style={s.small} onPress={() => Linking.openSettings()}>
-          <Text style={s.smallText}>Open Settings</Text>
+        <Text style={ui.msg}>The camera is turned off for this app. Turn it on in the iPhone Settings app.</Text>
+        <Pressable style={press(ui.btn, s.wide)} onPress={() => Linking.openSettings()}>
+          <Text style={ui.btnText}>Open Settings</Text>
         </Pressable>
       </View>
     );
   if (!checklist)
     return (
-      <View style={s.center}>
+      <View style={ui.center}>
         {screen}
-        <Text style={s.msg}>{loadFailed ?? 'Loading checklist…'}</Text>
+        {!loadFailed && <ActivityIndicator color={c.gray} />}
+        <Text style={ui.msg}>{loadFailed ?? 'Loading the checklist…'}</Text>
         {loadFailed && (
-          <Pressable style={s.small} onPress={loadChecklist}>
-            <Text style={s.smallText}>Try again</Text>
+          <Pressable style={press(ui.btn, s.wide)} onPress={loadChecklist}>
+            <Text style={ui.btnText}>Try again</Text>
           </Pressable>
         )}
       </View>
@@ -249,53 +261,72 @@ export default function Capture() {
           </View>
           <View style={s.info}>
             {saved ? (
-              <View style={s.savedRow}>
-                <Text style={s.saved}>✓ Saved: {saved.label}</Text>
-                <Pressable onPress={retake} hitSlop={12}>
-                  <Text style={s.retake}>{deletable(saved.id) ? 'Retake' : 'Shoot again'}</Text>
+              <View style={s.top}>
+                <Text style={[s.saved, s.grow]} numberOfLines={1} maxFontSizeMultiplier={MAX}>
+                  ✓ Saved: {saved.label}
+                </Text>
+                <Pressable style={press(s.retake)} onPress={retake}>
+                  <Text style={s.retakeText} maxFontSizeMultiplier={MAX}>
+                    {deletable(saved.id) ? 'Retake' : 'Shoot again'}
+                  </Text>
                 </Pressable>
               </View>
             ) : (
-              <Pressable onPress={() => router.back()}>
-                <Text style={s.progress}>{progress(checklist, item)}   See all ›</Text>
+              <Pressable style={press(s.top)} onPress={() => router.back()}>
+                <Text style={[s.progress, s.grow]} numberOfLines={1} maxFontSizeMultiplier={MAX}>
+                  {progress(checklist, item)}
+                </Text>
+                <Text style={s.seeAll} maxFontSizeMultiplier={MAX}>
+                  See all ›
+                </Text>
               </Pressable>
             )}
-            <Text style={s.itemLabel}>{item.label}</Text>
-            <Text style={s.instruction} numberOfLines={3}>
+            <Text style={s.itemLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={MAX}>
+              {item.label}
+            </Text>
+            <Text style={[s.instruction, { minHeight: 3 * 20 * fs }]} numberOfLines={3} maxFontSizeMultiplier={MAX}>
               {item.instruction}
             </Text>
-            {listening ? (
-              <Text style={s.interim} numberOfLines={2}>
-                {interim || 'Listening…'}
-              </Text>
-            ) : (
-              itemNotes > 0 && <Text style={s.progress}>{itemNotes === 1 ? '1 note' : `${itemNotes} notes`}</Text>
-            )}
+            <Text
+              style={[listening ? s.interim : s.progress, { minHeight: 18 * fs }]}
+              numberOfLines={1}
+              ellipsizeMode="head"
+              maxFontSizeMultiplier={MAX}
+            >
+              {listening ? interim || 'Listening…' : itemNotes ? (itemNotes === 1 ? '1 note' : `${itemNotes} notes`) : ''}
+            </Text>
           </View>
-          <View style={s.controls}>
-            <Pressable style={s.side} onPress={skip}>
-              <Text style={s.sideText}>Skip</Text>
+          <View style={[s.controls, { paddingBottom: insets.bottom + 12 }]}>
+            <Pressable style={press(s.side)} onPress={skip}>
+              <Text style={s.sideText} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX}>
+                Skip
+              </Text>
             </Pressable>
-            <Pressable style={[s.shutter, busy && s.dim]} onPress={shoot} disabled={busy} accessibilityLabel="Take photo" />
+            <Pressable style={press(s.shutter, busy && s.dim)} onPress={shoot} disabled={busy} accessibilityLabel="Take photo">
+              <View style={s.shutterInner} />
+            </Pressable>
             {submittedAt ? (
-              <View style={s.side} /> // the site ignores notes after submit
+              <View style={[s.side, s.hidden]} /> // the site ignores notes after submit
             ) : (
-              <Pressable style={[s.side, listening && s.rec, !speechOk && s.dim]} onPress={mic}>
-                <Text style={s.sideText}>{listening ? 'Stop note' : speechOk ? 'Voice note' : 'Speech off'}</Text>
+              <Pressable style={press(s.side, listening && s.rec, !speechOk && s.dim)} onPress={mic}>
+                <Text style={s.sideText} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={MAX}>
+                  {listening ? 'Stop note' : speechOk ? 'Voice note' : 'Voice off'}
+                </Text>
               </Pressable>
             )}
           </View>
         </>
       ) : (
-        <View style={s.center}>
+        <View style={ui.center}>
           {submittedAt ? (
-            <Text style={s.msg}>All shots taken</Text>
+            <Text style={ui.msg}>All shots done.</Text>
           ) : (
-            <Link href="/submit" asChild>
-              <Pressable style={s.button}>
-                <Text style={s.buttonText}>Review and submit</Text>
+            <>
+              <Text style={ui.msg}>All shots done.</Text>
+              <Pressable style={press(ui.btn, s.wide)} onPress={() => router.push('/submit')}>
+                <Text style={ui.btnText}>Review and submit</Text>
               </Pressable>
-            </Link>
+            </>
           )}
         </View>
       )}
@@ -303,29 +334,33 @@ export default function Capture() {
   );
 }
 
+// Black camera screen: its own styles, shared palette.
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16, backgroundColor: '#fff' },
-  msg: { fontSize: 17, textAlign: 'center' },
-  small: { backgroundColor: '#111', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 18 },
-  smallText: { color: '#fff', fontWeight: '600' },
-  camera: { flex: 6 },
-  info: { flex: 2, padding: 14, gap: 4, justifyContent: 'center' },
-  progress: { color: '#aaa', fontSize: 13 },
-  itemLabel: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  instruction: { color: '#ddd', fontSize: 15 },
-  controls: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingBottom: 20 },
-  side: { width: 70, height: 70, alignItems: 'center', justifyContent: 'center' },
-  sideText: { color: '#fff', fontSize: 14, fontWeight: '600', textAlign: 'center' },
-  interim: { color: '#f66', fontSize: 14, fontStyle: 'italic' },
-  rec: { backgroundColor: '#d00', borderRadius: 35 },
-  shutter: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#fff', borderWidth: 6, borderColor: '#888' },
+  wide: { alignSelf: 'stretch' },
+  head: { alignItems: 'center' },
+  headTitle: { fontSize: 17, fontWeight: '600', color: c.text },
+  headSub: { fontSize: 12, color: c.gray },
+  camera: { flex: 1 },
+  bar: { height: 4, backgroundColor: '#3a3a3c' },
+  barFill: { height: 4, backgroundColor: '#fff' },
+  info: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 2 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 44 },
+  grow: { flex: 1 },
+  progress: { color: '#c7c7cc', fontSize: 14 },
+  seeAll: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  saved: { color: '#30d158', fontSize: 15, fontWeight: '700' },
+  retake: { minHeight: 44, minWidth: 88, paddingHorizontal: 16, borderRadius: 999, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+  retakeText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  itemLabel: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  instruction: { color: '#e5e5ea', fontSize: 16, lineHeight: 20 },
+  interim: { color: '#ff8fbd', fontSize: 14, fontStyle: 'italic' },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12 },
+  side: { width: 104, minHeight: 56, paddingHorizontal: 10, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
+  sideText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  hidden: { backgroundColor: 'transparent' },
+  rec: { backgroundColor: c.accent },
+  shutter: { width: 80, height: 80, borderRadius: 40, borderWidth: 5, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  shutterInner: { width: 62, height: 62, borderRadius: 31, backgroundColor: '#fff' },
   dim: { opacity: 0.35 },
-  bar: { height: 3, backgroundColor: '#333' },
-  barFill: { height: 3, backgroundColor: '#fff' },
-  saved: { color: '#6c6', fontSize: 13, fontWeight: '600' },
-  savedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  retake: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  button: { alignSelf: 'stretch', margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
 });

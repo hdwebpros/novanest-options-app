@@ -1,10 +1,13 @@
-import { Link, Stack, router } from 'expo-router';
-import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Stack, router } from 'expo-router';
+import { ActionSheetIOS, Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { counts, day } from '../src/logic';
 import { removeHouse, set, useStore, type House } from '../src/store';
+import { AUTH_MSG, press, ui } from '../src/ui';
 
 export default function Houses() {
   const { houses, checklist, authFailed } = useStore();
+  const insets = useSafeAreaInsets();
   const all = Object.values(houses);
   const sections = [
     { title: 'In progress', data: all.filter((h) => !h.submittedAt).sort((a, b) => b.createdAt - a.createdAt) },
@@ -16,8 +19,8 @@ export default function Houses() {
     const { waiting, failed, done } = counts(h.photos, h.skips, checklist);
     return [
       h.submittedAt ? `Submitted ${day(h.submittedAt)} · ${n} photos` : checklist ? `${done} of ${checklist.length} shots` : `${n} photos`,
-      waiting > 0 && `${waiting} waiting`,
-      failed > 0 && `${failed} failed`,
+      waiting > 0 && `${waiting} to upload`,
+      failed > 0 && `${failed} didn't upload`,
     ]
       .filter(Boolean)
       .join(' · ');
@@ -40,51 +43,68 @@ export default function Houses() {
     );
   }
 
+  function more(h: House) {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: h.property.address, options: ['Remove from phone', 'Cancel'], destructiveButtonIndex: 0, cancelButtonIndex: 1 },
+      (i) => {
+        if (i === 0) remove(h);
+      },
+    );
+  }
+
   return (
-    <View style={s.page}>
+    <View style={ui.grouped}>
       <Stack.Screen
         options={{
-          title: 'Houses',
+          title: 'The Deal Room',
           headerRight: () => (
-            <Link href="/settings" style={s.gear}>
-              ⚙︎
-            </Link>
+            <Pressable style={press(ui.icon)} onPress={() => router.push('/settings')} accessibilityLabel="Settings">
+              <Text style={ui.iconText}>⚙︎</Text>
+            </Pressable>
           ),
         }}
       />
-      {authFailed && <Text style={s.auth}>Secret is wrong. Tap the gear.</Text>}
+      {authFailed && <Text style={[ui.error, ui.banner]}>{AUTH_MSG}</Text>}
       <SectionList
         sections={sections}
         keyExtractor={(h) => h.property.id}
-        renderSectionHeader={({ section }) => <Text style={s.header}>{section.title}</Text>}
+        contentContainerStyle={!sections.length && s.fill}
+        stickySectionHeadersEnabled={false}
+        ListHeaderComponent={<Text style={[ui.sub, s.by]}>by NovaNest</Text>}
+        renderSectionHeader={({ section }) => <Text style={ui.sectionHeader}>{section.title}</Text>}
         renderItem={({ item: h }) => (
-          <Pressable style={s.row} onPress={() => open(h.property.id)} onLongPress={() => remove(h)}>
-            <Text style={s.address} numberOfLines={1}>
-              {h.property.address}
-            </Text>
-            <Text style={s.sub}>{line(h)}</Text>
+          <Pressable style={press(ui.row)} onPress={() => open(h.property.id)} onLongPress={() => remove(h)}>
+            <View style={s.text}>
+              <Text style={s.address} numberOfLines={1}>
+                {h.property.address}
+              </Text>
+              <Text style={ui.sub}>{line(h)}</Text>
+            </View>
+            <Pressable style={press(ui.icon)} onPress={() => more(h)} accessibilityLabel="More options">
+              <Text style={ui.chevron}>⋯</Text>
+            </Pressable>
           </Pressable>
         )}
-        ListEmptyComponent={<Text style={s.empty}>No houses yet.</Text>}
+        ListEmptyComponent={
+          <View style={[ui.center, s.empty]}>
+            <Text style={ui.title}>No houses yet</Text>
+            <Text style={[ui.msg, ui.sub]}>Tap New house to start one.</Text>
+          </View>
+        }
       />
-      <Link href="/new" asChild>
-        <Pressable style={s.button}>
-          <Text style={s.buttonText}>New house</Text>
+      <View style={[ui.footer, { paddingBottom: insets.bottom + 8 }]}>
+        <Pressable style={press(ui.btn)} onPress={() => router.push('/new')}>
+          <Text style={ui.btnText}>New house</Text>
         </Pressable>
-      </Link>
+      </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  header: { backgroundColor: '#f2f2f2', paddingVertical: 8, paddingHorizontal: 12, fontWeight: '700' },
-  row: { padding: 14, gap: 2, borderBottomWidth: 1, borderColor: '#eee' },
-  address: { fontSize: 16, fontWeight: '600' },
-  sub: { color: '#555' },
-  empty: { textAlign: 'center', color: '#888', fontSize: 16, marginTop: 48 },
-  button: { margin: 16, marginBottom: 32, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  gear: { fontSize: 22, paddingHorizontal: 8 },
-  auth: { padding: 12, color: '#b00020', fontWeight: '600' },
+  fill: { flexGrow: 1 },
+  by: { paddingHorizontal: 16, paddingTop: 4 },
+  empty: { backgroundColor: 'transparent', gap: 8 },
+  text: { flex: 1, gap: 2 },
+  address: { fontSize: 17, fontWeight: '600' },
 });

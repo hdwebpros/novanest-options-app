@@ -1,14 +1,17 @@
-import { Link, Stack, router } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { counts, day, SKIPS, type Item, type Reason } from '../src/logic';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
+import { c, press, ui } from '../src/ui';
 
-const REASON = Object.fromEntries(SKIPS.map(([label, r]) => [r, label.toLowerCase()])) as Record<Reason, string>;
+const REASON = Object.fromEntries(SKIPS.map(([label, r]) => [r, label])) as Record<Reason, string>;
 
 export default function Rooms() {
   const { checklist } = useStore();
   const house = useHouse();
+  const insets = useSafeAreaInsets();
   if (!house) return null;
   const { photos, skips, property, submittedAt } = house;
   const all = Object.values(photos);
@@ -30,15 +33,15 @@ export default function Rooms() {
   }
 
   return (
-    <View style={s.page}>
+    <View style={ui.grouped}>
       <Stack.Screen options={{ title: property.address }} />
-      <View style={s.queue}>
-        <Text>
-          {uploaded} uploaded, {waiting} waiting
+      <View style={[ui.banner, s.queue]}>
+        <Text style={ui.sub}>
+          {uploaded} uploaded · {waiting} to upload
         </Text>
         {failed > 0 && (
-          <Pressable onPress={kick}>
-            <Text style={s.failed}>{failed} failed (tap to retry)</Text>
+          <Pressable style={press(s.retry)} onPress={kick}>
+            <Text style={ui.error}>{failed} didn’t upload. Tap to try again.</Text>
           </Pressable>
         )}
       </View>
@@ -47,49 +50,45 @@ export default function Rooms() {
         keyExtractor={(i) => i.key}
         stickySectionHeadersEnabled
         renderSectionHeader={({ section }) => (
-          <Text style={s.header}>
+          <Text style={ui.sectionHeader}>
             {section.title} · {section.data.filter((i) => count[i.key] || skips[i.key]).length} of {section.data.length} done
           </Text>
         )}
         renderItem={({ item: i }) => {
           const n = count[i.key];
-          const status = n ? `✓ ${n}` : skips[i.key] ? `skipped: ${REASON[skips[i.key]]}` : '';
-          const missing = i.required && !status;
+          const skip = skips[i.key];
           return (
-            <Pressable style={[s.row, missing && s.missing]} onPress={() => pick(i.key)}>
-              <Text style={s.label}>
-                {i.label}
-                {missing && <Text style={s.req}> required</Text>}
-              </Text>
-              <Text style={s.status}>{status}</Text>
+            <Pressable style={press(ui.row)} onPress={() => pick(i.key)}>
+              <Text style={[ui.body, s.label]}>{i.label}</Text>
+              {n ? (
+                <Text style={ui.ok}>✓ {n}</Text>
+              ) : skip ? (
+                <Text style={ui.sub}>Skipped: {REASON[skip].toLowerCase()}</Text>
+              ) : (
+                i.required && <Text style={s.req}>Required</Text>
+              )}
+              <Text style={ui.chevron}>›</Text>
             </Pressable>
           );
         }}
       />
-      {submittedAt ? (
-        <Text style={s.submitted}>Submitted {day(submittedAt)}</Text>
-      ) : (
-        <Link href="/submit" asChild>
-          <Pressable style={s.button}>
-            <Text style={s.buttonText}>Submit</Text>
+      <View style={[ui.footer, { paddingBottom: insets.bottom + 8 }]}>
+        {submittedAt ? (
+          <Text style={[ui.msg, ui.sub, s.done]}>Submitted {day(submittedAt)}</Text>
+        ) : (
+          <Pressable style={press(ui.btn)} onPress={() => router.push('/submit')}>
+            <Text style={ui.btnText}>Submit</Text>
           </Pressable>
-        </Link>
-      )}
+        )}
+      </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  queue: { padding: 12, gap: 4, borderBottomWidth: 1, borderColor: '#eee' },
-  failed: { color: '#b00020', fontWeight: '600' },
-  header: { backgroundColor: '#f2f2f2', paddingVertical: 8, paddingHorizontal: 12, fontWeight: '700' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: 14, borderBottomWidth: 1, borderColor: '#eee' },
-  missing: { borderLeftWidth: 4, borderLeftColor: '#d97706' },
-  label: { flex: 1, fontSize: 16 },
-  req: { color: '#d97706', fontSize: 12, fontWeight: '600' },
-  status: { color: '#555' },
-  button: { margin: 16, marginBottom: 32, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  submitted: { textAlign: 'center', color: '#888', fontSize: 16, padding: 16, paddingBottom: 32 },
+  queue: { gap: 4, backgroundColor: c.bg, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.line },
+  retry: { minHeight: 44, justifyContent: 'center' },
+  label: { flex: 1 },
+  req: { fontSize: 15, fontWeight: '600', color: c.accent },
+  done: { paddingVertical: 14 },
 });

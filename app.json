@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NovaNest Options",
+    "name": "The Deal Room",
     "slug": "novanest-options",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,21 +20,21 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "NovaNest Field uses the camera to photograph the property.",
-          "microphonePermission": "NovaNest Field uses the microphone for voice notes."
+          "cameraPermission": "The Deal Room uses the camera to photograph the property.",
+          "microphonePermission": "The Deal Room uses the microphone for voice notes."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "NovaNest Field tags each photo with where it was taken."
+          "locationWhenInUsePermission": "The Deal Room tags each photo with where it was taken."
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "NovaNest Field uses the microphone for voice notes.",
-          "speechRecognitionPermission": "NovaNest Field turns your voice notes into text on the phone."
+          "microphonePermission": "The Deal Room uses the microphone for voice notes.",
+          "speechRecognitionPermission": "The Deal Room turns your voice notes into text on the phone."
         }
       ]
     ],
