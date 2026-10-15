@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../src/api';
@@ -9,10 +9,13 @@ import { kick } from '../src/uploader';
 export default function Settings() {
   const [secret, setSecret] = useState('');
   const [result, setResult] = useState('');
+  // Deep link novanest-field://settings?secret=... (QR code on the laptop) fills the field; still tap Save or Test.
+  const { secret: fromLink } = useLocalSearchParams<{ secret?: string }>();
 
   useEffect(() => {
+    if (fromLink) return setSecret(fromLink);
     SecureStore.getItemAsync('secret').then((v) => setSecret(v ?? ''));
-  }, []);
+  }, [fromLink]);
 
   async function save() {
     await SecureStore.setItemAsync('secret', secret.trim());
