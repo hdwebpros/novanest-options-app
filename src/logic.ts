@@ -3,8 +3,16 @@ export type Item = { key: string; section: string; label: string; instruction: s
 export type Reason = 'not_there' | 'no_access' | 'unsafe';
 export type Photo = { id: string; item: string; uploaded: boolean; attempts: number; at: number; error?: number };
 
-// First checklist item with no photo and no skip, or null when all are done.
-export function nextItem(checklist: Item[], photos: Record<string, Photo>, skips: Record<string, Reason>): Item | null {
+// The item picked in the room list (even if already shot: a second photo is fine), else the first item
+// with no photo and no skip, or null when all are done.
+export function nextItem(
+  checklist: Item[],
+  photos: Record<string, Photo>,
+  skips: Record<string, Reason>,
+  current?: string,
+): Item | null {
+  const picked = current && checklist.find((i) => i.key === current);
+  if (picked) return picked;
   const shot = new Set(Object.values(photos).map((p) => p.item));
   return checklist.find((i) => !shot.has(i.key) && !skips[i.key]) ?? null;
 }

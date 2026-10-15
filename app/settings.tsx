@@ -40,7 +40,7 @@ export default function Settings() {
         style: 'destructive',
         onPress: () => {
           // ponytail: photo files stay in documents/photos (never deleted this slice); add cleanup when storage matters.
-          set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [] }));
+          set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [], current: undefined }));
           if (router.canDismiss()) router.dismissAll();
           router.replace('/');
         },

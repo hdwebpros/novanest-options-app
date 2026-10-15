@@ -30,6 +30,13 @@
         {
           "locationWhenInUsePermission": "NovaNest Field tags each photo with where it was taken."
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "NovaNest Field uses the microphone for voice notes.",
+          "speechRecognitionPermission": "NovaNest Field turns your voice notes into text on the phone."
+        }
       ]
     ],
     "extra": {

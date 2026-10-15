@@ -17,6 +17,7 @@ export type State = {
   photos: Record<string, Photo>;
   skips: Record<string, Reason>;
   notes: { item?: string; text: string }[];
+  current?: string; // item key picked in the room list; capture clears it after a photo/skip on it
 };
 
 const empty: State = { checklist: null, property: null, photos: {}, skips: {}, notes: [] };

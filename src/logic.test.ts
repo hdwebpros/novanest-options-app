@@ -15,6 +15,14 @@ test('nextItem skips shot and skipped items, null when done', () => {
   assert.equal(nextItem(list, { p: photo('p', 'a', 1), q: photo('q', 'c', 2) }, { b: 'unsafe' }), null);
 });
 
+test('nextItem returns current even when done, ignores unknown current', () => {
+  const p = { p: photo('p', 'a', 1) };
+  assert.equal(nextItem(list, p, {}, 'a')?.key, 'a');
+  assert.equal(nextItem(list, p, { c: 'unsafe' }, 'c')?.key, 'c');
+  assert.equal(nextItem(list, p, {}, 'gone')?.key, 'b');
+  assert.equal(nextItem(list, p, {}, undefined)?.key, 'b');
+});
+
 test('progress is position within section', () => {
   assert.equal(progress(list, list[1]), 'Exterior, 2 of 2');
   assert.equal(progress(list, list[2]), 'Kitchen, 1 of 1');

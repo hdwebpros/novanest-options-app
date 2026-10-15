@@ -31,3 +31,12 @@ export async function fetchChecklist(): Promise<Item[]> {
   if (!res.ok) throw new Error(`checklist ${res.status}`);
   return (await res.json()).items;
 }
+
+// Safe to retry: once submitted the site just returns the current status. Caller reads the status (409 = no photos).
+export function submitProperty(token: string, body: { notes: { item?: string; text: string }[]; skipped: { item: string; reason: string }[] }) {
+  return api(`/api/options/field/${encodeURIComponent(token)}/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

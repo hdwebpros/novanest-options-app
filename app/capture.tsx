@@ -5,9 +5,10 @@ import { Camera, CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
+import { ExpoSpeechRecognitionModule as Speech, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { fetchChecklist } from '../src/api';
 import { nextItem, pickSize, progress, type Reason } from '../src/logic';
-import { photoFile, photosDir, set, useStore } from '../src/store';
+import { get, photoFile, photosDir, set, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 const SKIPS: [string, Reason][] = [
@@ -41,12 +42,51 @@ async function gpsExif(): Promise<Record<string, unknown>> {
 }
 
 export default function Capture() {
-  const { checklist, photos, skips, property } = useStore();
+  const { checklist, photos, skips, property, notes, current } = useStore();
   const [perm, setPerm] = useState<'asking' | 'ok' | 'denied'>('asking');
   const [loadFailed, setLoadFailed] = useState(false);
   const [pictureSize, setPictureSize] = useState<string>();
   const [busy, setBusy] = useState(false);
   const cam = useRef<CameraView>(null);
+  const [speechOk, setSpeechOk] = useState(true);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  // The item is fixed at start (a photo mid-note advances the item). finals = finished chunks, interim = chunk in progress.
+  const voice = useRef({ item: '', finals: '', interim: '' });
+  function saveNote() {
+    const { item, finals, interim } = voice.current;
+    voice.current = { item: '', finals: '', interim: '' };
+    const text = (finals + interim).trim();
+    if (item && text) set((st) => ({ ...st, notes: [...st.notes, { item, text }] }));
+  }
+
+  // Never log transcript text.
+  useSpeechRecognitionEvent('result', (e) => {
+    const t = e.results[0]?.transcript ?? '';
+    if (e.isFinal) {
+      voice.current.finals += t;
+      voice.current.interim = '';
+    } else voice.current.interim = t;
+    setInterim(voice.current.interim);
+  });
+  useSpeechRecognitionEvent('error', (e) => {
+    if (e.error === 'not-allowed') setSpeechOk(false);
+    setListening(false);
+  });
+  // 'end' fires after stop, error or abort: save whatever was heard.
+  useSpeechRecognitionEvent('end', () => {
+    setListening(false);
+    setInterim('');
+    saveNote();
+  });
+  // Leaving the screen mid-note: keep what was heard, then stop listening.
+  useEffect(
+    () => () => {
+      saveNote();
+      Speech.abort();
+    },
+    [],
+  );
 
   // Permission gate: ask everything once, up front. Only camera is blocking.
   useEffect(() => {
@@ -54,6 +94,7 @@ export default function Capture() {
       const c = await Camera.requestCameraPermissionsAsync();
       await Camera.requestMicrophonePermissionsAsync();
       const l = await Location.requestForegroundPermissionsAsync();
+      setSpeechOk((await Speech.requestPermissionsAsync()).granted);
       if (l.granted) Location.getCurrentPositionAsync().catch(() => {}); // warm up last-known position
       setPerm(c.granted ? 'ok' : 'denied');
     })();
@@ -76,9 +117,14 @@ export default function Capture() {
         title: header,
         headerTitleStyle: { fontSize: 14 },
         headerRight: () => (
-          <Link href="/settings" style={s.gear}>
-            ⚙︎
-          </Link>
+          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
+            <Link href="/rooms" style={{ fontSize: 16, fontWeight: '600' }}>
+              Rooms
+            </Link>
+            <Link href="/settings" style={s.gear}>
+              ⚙︎
+            </Link>
+          </View>
         ),
       }}
     />
@@ -108,7 +154,8 @@ export default function Capture() {
       </View>
     );
 
-  const item = nextItem(checklist, photos, skips);
+  const item = nextItem(checklist, photos, skips, current);
+  const itemNotes = item ? notes.filter((n) => n.item === item.key).length : 0;
 
   async function onReady() {
     const sizes = (await cam.current?.getAvailablePictureSizesAsync()) ?? [];
@@ -127,12 +174,24 @@ export default function Capture() {
       const id = expo.uuidv4();
       photosDir().create({ intermediates: true, idempotent: true });
       new File(pic.uri).moveSync(photoFile(id));
-      set((st) => ({ ...st, photos: { ...st.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
+      set((st) => ({ ...st, current: undefined, photos: { ...st.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (listening && !nextItem(checklist!, get().photos, skips)) Speech.stop(); // last shot: end the note so it saves
       kick();
     } finally {
       setBusy(false);
     }
+  }
+
+  function mic() {
+    if (!speechOk) return Linking.openSettings();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (listening) return Speech.stop();
+    if (!item) return;
+    voice.current = { item: item.key, finals: '', interim: '' };
+    setListening(true);
+    // No recordingOptions: audio is never written to disk.
+    Speech.start({ lang: 'en-US', interimResults: true, continuous: true, requiresOnDeviceRecognition: true });
   }
 
   function skip() {
@@ -140,7 +199,7 @@ export default function Capture() {
     ActionSheetIOS.showActionSheetWithOptions(
       { options: [...SKIPS.map(([label]) => label), 'Cancel'], cancelButtonIndex: SKIPS.length, title: item.label },
       (i) => {
-        if (i < SKIPS.length) set((st) => ({ ...st, skips: { ...st.skips, [item.key]: SKIPS[i][1] } }));
+        if (i < SKIPS.length) set((st) => ({ ...st, current: undefined, skips: { ...st.skips, [item.key]: SKIPS[i][1] } }));
       },
     );
   }
@@ -157,21 +216,29 @@ export default function Capture() {
             <Text style={s.instruction} numberOfLines={1}>
               {item.instruction}
             </Text>
+            {listening ? (
+              <Text style={s.interim} numberOfLines={2}>
+                {interim || 'Listening…'}
+              </Text>
+            ) : (
+              itemNotes > 0 && <Text style={s.progress}>{itemNotes === 1 ? '1 note' : `${itemNotes} notes`}</Text>
+            )}
           </View>
           <View style={s.controls}>
             <Pressable style={s.side} onPress={skip}>
               <Text style={s.sideText}>Skip</Text>
             </Pressable>
             <Pressable style={[s.shutter, busy && s.dim]} onPress={shoot} disabled={busy} accessibilityLabel="Take photo" />
-            <View style={[s.side, s.dim]}>
-              <Text style={s.sideText}>Mic</Text>
-              <Text style={s.soon}>soon</Text>
-            </View>
+            <Pressable style={[s.side, listening && s.rec, !speechOk && s.dim]} onPress={mic}>
+              <Text style={s.sideText}>{listening ? 'Stop' : speechOk ? 'Mic' : 'Speech off'}</Text>
+            </Pressable>
           </View>
         </>
       ) : (
         <View style={s.center}>
-          <Text style={s.msg}>All done. Submit comes next slice.</Text>
+          <Link href="/submit" style={s.msg}>
+            All done. Tap to submit.
+          </Link>
         </View>
       )}
     </View>
@@ -191,8 +258,9 @@ const s = StyleSheet.create({
   instruction: { color: '#ddd', fontSize: 15 },
   controls: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingBottom: 20 },
   side: { width: 70, height: 70, alignItems: 'center', justifyContent: 'center' },
-  sideText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  soon: { color: '#aaa', fontSize: 11 },
+  sideText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  interim: { color: '#f66', fontSize: 14, fontStyle: 'italic' },
+  rec: { backgroundColor: '#d00', borderRadius: 35 },
   shutter: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#fff', borderWidth: 6, borderColor: '#888' },
   dim: { opacity: 0.35 },
   gear: { fontSize: 22, paddingHorizontal: 8 },
