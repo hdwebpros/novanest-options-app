@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "NovaNest Field",
-    "slug": "novanest-field",
+    "name": "NovaNest Options",
+    "slug": "novanest-options",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,13 +18,26 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-camera", {
-        "cameraPermission": "NovaNest Field uses the camera to photograph the property.",
-        "microphonePermission": "NovaNest Field uses the microphone for voice notes."
-      }],
-      ["expo-location", {
-        "locationWhenInUsePermission": "NovaNest Field tags each photo with where it was taken."
-      }]
-    ]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NovaNest Field uses the camera to photograph the property.",
+          "microphonePermission": "NovaNest Field uses the microphone for voice notes."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "NovaNest Field tags each photo with where it was taken."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7017df65-4933-41f8-85c5-1c10693da424"
+      }
+    },
+    "owner": "hdwebpross-team"
   }
 }
