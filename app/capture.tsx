@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Stack } from 'expo-router';
+import { Link, Stack, router } from 'expo-router';
 import { ActionSheetIOS, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
@@ -47,6 +47,9 @@ export default function Capture() {
   const [loadFailed, setLoadFailed] = useState<string>();
   const [pictureSize, setPictureSize] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<string>(); // "✓ Saved: <label>" flash after a shot
+  const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(savedTimer.current), []);
   const cam = useRef<CameraView>(null);
   const [speechOk, setSpeechOk] = useState(true);
   const [listening, setListening] = useState(false);
@@ -111,8 +114,15 @@ export default function Capture() {
   useEffect(loadChecklist, []);
 
   const all = Object.values(photos);
-  const uploaded = all.filter((p) => p.uploaded).length;
-  const header = `${uploaded} uploaded, ${all.length - uploaded} waiting${property?.token ? '' : ' · house not created yet'}`;
+  const failed = all.filter((p) => !p.uploaded && p.error).length;
+  const waiting = all.filter((p) => !p.uploaded).length - failed;
+  const header = [
+    waiting > 0 && `${waiting} waiting to upload`,
+    failed > 0 && `${failed} failed`,
+    waiting > 0 && !property?.token && 'house not created yet',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const screen = (
     <Stack.Screen
       options={{
@@ -121,17 +131,7 @@ export default function Capture() {
             <Text style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
               {property?.address ?? 'NovaNest'}
             </Text>
-            <Text style={{ fontSize: 12, color: '#666' }}>{header}</Text>
-          </View>
-        ),
-        headerRight: () => (
-          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
-            <Link href="/rooms" style={{ fontSize: 16, fontWeight: '600' }}>
-              Rooms
-            </Link>
-            <Link href="/settings" style={s.gear}>
-              ⚙︎
-            </Link>
+            {!!header && <Text style={{ fontSize: 12, color: '#666' }}>{header}</Text>}
           </View>
         ),
       }}
@@ -164,6 +164,7 @@ export default function Capture() {
 
   const item = nextItem(checklist, photos, skips, current);
   const itemNotes = item ? notes.filter((n) => n.item === item.key).length : 0;
+  const done = checklist.filter((i) => skips[i.key] || all.some((p) => p.item === i.key)).length;
 
   async function onReady() {
     const sizes = (await cam.current?.getAvailablePictureSizesAsync()) ?? [];
@@ -184,6 +185,9 @@ export default function Capture() {
       new File(pic.uri).moveSync(photoFile(id));
       set((st) => ({ ...st, current: undefined, photos: { ...st.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setSaved(`✓ Saved: ${item.label}`);
+      clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(undefined), 1500);
       if (listening && !nextItem(checklist!, get().photos, skips)) Speech.stop(); // last shot: end the note so it saves
       kick();
     } finally {
@@ -218,10 +222,19 @@ export default function Capture() {
       {item ? (
         <>
           <CameraView ref={cam} style={s.camera} onCameraReady={onReady} pictureSize={pictureSize} />
+          <View style={s.bar}>
+            <View style={[s.barFill, { width: `${(done / checklist.length) * 100}%` }]} />
+          </View>
           <View style={s.info}>
-            <Text style={s.progress}>{progress(checklist, item)}</Text>
+            {saved ? (
+              <Text style={s.saved}>{saved}</Text>
+            ) : (
+              <Pressable onPress={() => router.back()}>
+                <Text style={s.progress}>{progress(checklist, item)}   See all ›</Text>
+              </Pressable>
+            )}
             <Text style={s.itemLabel}>{item.label}</Text>
-            <Text style={s.instruction} numberOfLines={1}>
+            <Text style={s.instruction} numberOfLines={3}>
               {item.instruction}
             </Text>
             {listening ? (
@@ -238,14 +251,16 @@ export default function Capture() {
             </Pressable>
             <Pressable style={[s.shutter, busy && s.dim]} onPress={shoot} disabled={busy} accessibilityLabel="Take photo" />
             <Pressable style={[s.side, listening && s.rec, !speechOk && s.dim]} onPress={mic}>
-              <Text style={s.sideText}>{listening ? 'Stop' : speechOk ? 'Mic' : 'Speech off'}</Text>
+              <Text style={s.sideText}>{listening ? 'Stop note' : speechOk ? 'Voice note' : 'Speech off'}</Text>
             </Pressable>
           </View>
         </>
       ) : (
         <View style={s.center}>
-          <Link href="/submit" style={s.msg}>
-            All done. Tap to submit.
+          <Link href="/submit" asChild>
+            <Pressable style={s.button}>
+              <Text style={s.buttonText}>Review and submit</Text>
+            </Pressable>
           </Link>
         </View>
       )}
@@ -266,10 +281,14 @@ const s = StyleSheet.create({
   instruction: { color: '#ddd', fontSize: 15 },
   controls: { flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingBottom: 20 },
   side: { width: 70, height: 70, alignItems: 'center', justifyContent: 'center' },
-  sideText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  sideText: { color: '#fff', fontSize: 14, fontWeight: '600', textAlign: 'center' },
   interim: { color: '#f66', fontSize: 14, fontStyle: 'italic' },
   rec: { backgroundColor: '#d00', borderRadius: 35 },
   shutter: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#fff', borderWidth: 6, borderColor: '#888' },
   dim: { opacity: 0.35 },
-  gear: { fontSize: 22, paddingHorizontal: 8 },
+  bar: { height: 3, backgroundColor: '#333' },
+  barFill: { height: 3, backgroundColor: '#fff' },
+  saved: { color: '#6c6', fontSize: 13, fontWeight: '600' },
+  button: { alignSelf: 'stretch', margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
+  buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
 });

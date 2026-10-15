@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, Redirect, Stack, router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Link, Stack, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { set, useStore } from '../src/store';
 import { kick } from '../src/uploader';
@@ -38,7 +38,13 @@ export default function NewProperty() {
   const [occupancy, setOccupancy] = useState('');
   const [sqft, setSqft] = useState('');
 
-  if (property) return <Redirect href="/capture" />;
+  // Checklist sits under the camera so Capture gets a native back button. Also runs right after Create.
+  useEffect(() => {
+    if (!property) return;
+    router.replace('/rooms');
+    router.push('/capture');
+  }, [!!property]);
+  if (property) return null;
 
   const sqftNum = sqft ? parseInt(sqft, 10) : undefined;
   const ok = address.trim() && county.trim() && type && occupancy && (sqft === '' || (sqftNum! > 0 && /^\d+$/.test(sqft)));
@@ -56,8 +62,7 @@ export default function NewProperty() {
         finishedSqft: sqftNum,
       },
     }));
-    kick();
-    router.replace('/capture');
+    kick(); // the effect above navigates once property is set
   }
 
   return (

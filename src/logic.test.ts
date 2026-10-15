@@ -23,9 +23,9 @@ test('nextItem returns current even when done, ignores unknown current', () => {
   assert.equal(nextItem(list, p, {}, undefined)?.key, 'b');
 });
 
-test('progress is position within section', () => {
-  assert.equal(progress(list, list[1]), 'Exterior, 2 of 2');
-  assert.equal(progress(list, list[2]), 'Kitchen, 1 of 1');
+test('progress is overall position, then position within section', () => {
+  assert.equal(progress(list, list[1]), 'Shot 2 of 3 · Exterior 2 of 2');
+  assert.equal(progress(list, list[2]), 'Shot 3 of 3 · Kitchen 1 of 1');
 });
 
 test('nextPending is oldest unuploaded, honours skip set', () => {

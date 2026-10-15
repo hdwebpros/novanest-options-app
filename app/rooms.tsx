@@ -24,12 +24,21 @@ export default function Rooms() {
 
   function pick(key: string) {
     set((s) => ({ ...s, current: key }));
-    router.back();
+    router.push('/capture');
   }
 
   return (
     <View style={s.page}>
-      <Stack.Screen options={{ title: property?.address ?? 'Rooms' }} />
+      <Stack.Screen
+        options={{
+          title: property?.address ?? 'Checklist',
+          headerRight: () => (
+            <Link href="/settings" style={s.gear}>
+              ⚙︎
+            </Link>
+          ),
+        }}
+      />
       <View style={s.queue}>
         <Text>
           {uploaded} uploaded, {all.length - uploaded - failed} waiting
@@ -96,4 +105,5 @@ const s = StyleSheet.create({
   button: { margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   leave: { textAlign: 'center', color: '#b00020', paddingBottom: 24 },
+  gear: { fontSize: 22, paddingHorizontal: 8 },
 });

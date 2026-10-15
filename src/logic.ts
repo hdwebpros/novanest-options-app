@@ -17,10 +17,10 @@ export function nextItem(
   return checklist.find((i) => !shot.has(i.key) && !skips[i.key]) ?? null;
 }
 
-// "Exterior, 8 of 21": position within its section, section size.
+// "Shot 3 of 36 · Exterior 3 of 15": position in the whole checklist, then within its section.
 export function progress(checklist: Item[], item: Item): string {
   const sec = checklist.filter((i) => i.section === item.section);
-  return `${item.section}, ${sec.indexOf(item) + 1} of ${sec.length}`;
+  return `Shot ${checklist.indexOf(item) + 1} of ${checklist.length} · ${item.section} ${sec.indexOf(item) + 1} of ${sec.length}`;
 }
 
 // Oldest not-yet-uploaded photo, ignoring ids already given up on this run.
