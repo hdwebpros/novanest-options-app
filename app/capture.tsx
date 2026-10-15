@@ -126,6 +126,7 @@ export default function Capture() {
   const screen = (
     <Stack.Screen
       options={{
+        headerBackTitle: 'Checklist',
         headerTitle: () => (
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
