@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { submitProperty } from '../src/api';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 export default function Submit() {
-  const { checklist } = useStore();
+  const { checklist, authFailed } = useStore();
   const house = useHouse();
   const [result, setResult] = useState<'sending' | 'done' | string>('');
   const { photos = {}, skips = {}, notes = [], property } = house ?? {};
@@ -18,11 +18,11 @@ export default function Submit() {
 
   // ponytail: kicking every 5s overrides the uploader's 60s backoff while this screen is open; fine for one phone.
   useEffect(() => {
-    if (!waiting && property?.token) return;
+    if ((!waiting && property?.token) || authFailed) return;
     kick();
     const t = setInterval(kick, 5000);
     return () => clearInterval(t);
-  }, [waiting, property?.token]);
+  }, [waiting, property?.token, authFailed]);
 
   async function submit() {
     if (!property?.token) return;
@@ -79,7 +79,14 @@ export default function Submit() {
       </ScrollView>
     );
 
-  const ready = waiting === 0 && failed === 0 && !!property?.token && result !== 'sending';
+  const ready = waiting === 0 && !!property?.token && result !== 'sending';
+  const confirm = () =>
+    failed
+      ? Alert.alert(`${failed} photo${failed > 1 ? 's' : ''} failed to upload`, 'Submit without them?', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Submit', onPress: submit },
+        ])
+      : submit();
   return (
     <ScrollView contentContainerStyle={s.page}>
       {screen}
@@ -89,6 +96,7 @@ export default function Submit() {
       </Text>
       <Text>{waiting ? `Uploading… ${waiting} left` : `${all.length - failed} uploaded`}</Text>
       {!property?.token && <Text>Creating the house on the site…</Text>}
+      {authFailed && <Text style={s.error}>Secret is wrong. Tap the gear.</Text>}
       {failed > 0 && (
         <Pressable onPress={kick}>
           <Text style={s.error}>
@@ -96,7 +104,7 @@ export default function Submit() {
           </Text>
         </Pressable>
       )}
-      <Pressable style={[s.button, !ready && s.disabled]} disabled={!ready} onPress={submit}>
+      <Pressable style={[s.button, !ready && s.disabled]} disabled={!ready} onPress={confirm}>
         <Text style={s.buttonText}>{result === 'sending' ? 'Submitting…' : 'Submit'}</Text>
       </Pressable>
       {result && result !== 'sending' && <Text style={s.error}>{result}</Text>}

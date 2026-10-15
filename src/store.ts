@@ -21,7 +21,8 @@ export type House = {
   createdAt: number;
 };
 // Houses are keyed by property.id.
-export type State = { checklist: Item[] | null; houses: Record<string, House>; active?: string };
+// authFailed: last create/upload got 401/403. Not loaded on start; the next upload re-learns it.
+export type State = { checklist: Item[] | null; houses: Record<string, House>; active?: string; authFailed?: boolean };
 
 const empty: State = { checklist: null, houses: {} };
 let state = empty;
@@ -46,7 +47,14 @@ export function load() {
         state.active = property.id;
       }
       return;
-    } catch {}
+    } catch {
+      // Keep the unreadable file so the next write can't silently wipe the houses in it.
+      if (name === 'state.json') {
+        try {
+          f.copySync(new File(Paths.document, 'state.json.bad'), { overwrite: true });
+        } catch {}
+      }
+    }
   }
 }
 
@@ -60,6 +68,11 @@ export function set(fn: (s: State) => State) {
   tmp.write(JSON.stringify(state));
   tmp.moveSync(new File(Paths.document, 'state.json'), { overwrite: true });
   listeners.forEach((l) => l());
+}
+
+// Only writes on change, so a 2xx on every photo doesn't rewrite state.json for nothing.
+export function setAuthFailed(v: boolean) {
+  if (!!state.authFailed !== v) set((s) => ({ ...s, authFailed: v }));
 }
 
 // No-op if the house is gone (removed while an upload was in flight).

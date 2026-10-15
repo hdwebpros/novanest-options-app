@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../src/api';
+import { setAuthFailed } from '../src/store';
 import { kick } from '../src/uploader';
 
 export default function Settings() {
@@ -19,6 +20,7 @@ export default function Settings() {
   async function save() {
     await SecureStore.setItemAsync('secret', secret.trim());
     setResult('Saved');
+    setAuthFailed(false);
     kick();
   }
 
@@ -28,7 +30,10 @@ export default function Settings() {
     try {
       const res = await api('/api/options/pending');
       setResult(res.status === 200 ? 'OK' : String(res.status));
-      if (res.status === 200) kick();
+      if (res.status === 200) {
+        setAuthFailed(false);
+        kick();
+      }
     } catch {
       setResult('No connection');
     }

@@ -3,7 +3,7 @@ import * as Network from 'expo-network';
 import { UploadType } from 'expo-file-system';
 import { BASE, authHeaders, createProperty, getSecret } from './api';
 import { nextPending } from './logic';
-import { get, patchHouse, patchPhoto, photoFile } from './store';
+import { get, patchHouse, patchPhoto, photoFile, setAuthFailed } from './store';
 
 const BACKOFF = [5000, 15000, 60000];
 let running = false;
@@ -48,6 +48,7 @@ async function run() {
       if (!property.token) {
         const token = await createProperty(property);
         patchHouse(property.id, (h) => ({ property: { ...h.property, token } }));
+        setAuthFailed(false);
         continue;
       }
       const photo = nextPending(house.photos, skip)!;
@@ -57,7 +58,9 @@ async function run() {
         `&category=${encodeURIComponent(category)}&id=${encodeURIComponent(photo.id)}`;
       const file = photoFile(photo.id);
       if (!file.exists) {
-        skip.add(photo.id); // should never happen; don't let it wedge the queue
+        // should never happen; mark failed so it doesn't count as waiting forever or wedge the queue
+        patchPhoto(property.id, photo.id, { error: -1 });
+        skip.add(photo.id);
         continue;
       }
       patchPhoto(property.id, photo.id, { attempts: photo.attempts + 1 });
@@ -70,8 +73,10 @@ async function run() {
       });
       if (res.status >= 200 && res.status < 300) {
         patchPhoto(property.id, photo.id, { uploaded: true, error: undefined });
+        setAuthFailed(false);
         failures = 0;
       } else if (res.status === 401 || res.status === 403) {
+        setAuthFailed(true);
         return; // bad secret: every photo would fail; wait for the next kick (foreground / settings)
       } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
         patchPhoto(property.id, photo.id, { error: res.status });
@@ -79,7 +84,11 @@ async function run() {
       } else {
         throw new Error(`upload ${res.status}`);
       }
-    } catch {
+    } catch (e) {
+      if (/^create 40[13]$/.test((e as Error).message)) {
+        setAuthFailed(true);
+        return; // same as a photo 401/403
+      }
       // network failure, 5xx, 408/429, or create failed: stop and back off. Same ids on retry.
       retryLater();
       return;

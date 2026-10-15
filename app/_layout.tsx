@@ -6,6 +6,9 @@ import { start } from '../src/uploader';
 load();
 start();
 
+// Cold start from the settings deep link still has Houses beneath it. (`initialRouteName` is deprecated for `anchor`.)
+export const unstable_settings = { anchor: 'index' };
+
 export default function Layout() {
   return <Stack />;
 }

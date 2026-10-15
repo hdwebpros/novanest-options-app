@@ -42,12 +42,13 @@ async function gpsExif(): Promise<Record<string, unknown>> {
 }
 
 export default function Capture() {
-  const { checklist } = useStore();
+  const { checklist, authFailed } = useStore();
   const house = useHouse();
   const [perm, setPerm] = useState<'asking' | 'ok' | 'denied'>('asking');
   const [loadFailed, setLoadFailed] = useState<string>();
   const [pictureSize, setPictureSize] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const shooting = useRef(false); // state updates are async; a fast double-tap can get past `busy`
   const [saved, setSaved] = useState<{ id: string; item: string; label: string }>(); // "✓ Saved: <label>" flash + Retake
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(savedTimer.current), []);
@@ -68,7 +69,7 @@ export default function Capture() {
   useSpeechRecognitionEvent('result', (e) => {
     const t = e.results[0]?.transcript ?? '';
     if (e.isFinal) {
-      voice.current.finals += t;
+      voice.current.finals += t + ' ';
       voice.current.interim = '';
     } else voice.current.interim = t;
     setInterim(voice.current.interim);
@@ -122,6 +123,7 @@ export default function Capture() {
   const failed = all.filter((p) => !p.uploaded && p.error).length;
   const waiting = all.filter((p) => !p.uploaded).length - failed;
   const header = [
+    authFailed && 'Secret is wrong. Tap the gear.',
     waiting > 0 && `${waiting} waiting to upload`,
     failed > 0 && `${failed} failed`,
     waiting > 0 && !property.token && 'house not created yet',
@@ -180,7 +182,8 @@ export default function Capture() {
   }
 
   async function shoot() {
-    if (!item || busy || !cam.current) return;
+    if (!item || busy || shooting.current || !cam.current) return;
+    shooting.current = true;
     setBusy(true);
     try {
       // exif:true goes through CGImageDestination with UTType.jpeg on iOS, so the file is JPEG even though
@@ -197,27 +200,32 @@ export default function Capture() {
       if (listening && !nextItem(checklist!, get().houses[hid]?.photos ?? {}, skips)) Speech.stop(); // last shot: end the note so it saves
       kick();
     } finally {
+      shooting.current = false;
       setBusy(false);
     }
   }
 
-  // Not uploaded: drop the photo and its file. Uploaded: no delete API, so just go back to that item for another shot.
-  // The uploader's patchPhoto is a no-op for a removed id, so an upload finishing late can't bring it back.
+  // Never started uploading: drop the photo and its file. Otherwise the site may already have it (no delete API),
+  // so just go back to that item for another shot.
+  const deletable = (id: string) => {
+    const p = get().houses[hid]?.photos[id];
+    return !!p && !p.uploaded && !p.attempts;
+  };
   function retake() {
     if (!saved) return;
     clearTimeout(savedTimer.current);
     setSaved(undefined);
-    const p = get().houses[hid]?.photos[saved.id];
-    if (p && !p.uploaded) {
+    const { id, item: key } = saved;
+    if (deletable(id)) {
       patchHouse(hid, (h) => {
         const photos = { ...h.photos };
-        delete photos[p.id];
-        return { photos, current: p.item };
+        delete photos[id];
+        return { photos, current: key };
       });
       try {
-        photoFile(p.id).delete();
+        photoFile(id).delete();
       } catch {}
-    } else patchHouse(hid, { current: saved.item });
+    } else patchHouse(hid, { current: key });
   }
 
   function mic() {
@@ -255,7 +263,7 @@ export default function Capture() {
               <View style={s.savedRow}>
                 <Text style={s.saved}>✓ Saved: {saved.label}</Text>
                 <Pressable onPress={retake} hitSlop={12}>
-                  <Text style={s.retake}>{photos[saved.id]?.uploaded ? 'Shoot again' : 'Retake'}</Text>
+                  <Text style={s.retake}>{deletable(saved.id) ? 'Retake' : 'Shoot again'}</Text>
                 </Pressable>
               </View>
             ) : (

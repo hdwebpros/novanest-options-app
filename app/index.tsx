@@ -4,7 +4,7 @@ import { day } from '../src/logic';
 import { removeHouse, set, useStore, type House } from '../src/store';
 
 export default function Houses() {
-  const { houses, checklist } = useStore();
+  const { houses, checklist, authFailed } = useStore();
   const all = Object.values(houses);
   const sections = [
     { title: 'In progress', data: all.filter((h) => !h.submittedAt).sort((a, b) => b.createdAt - a.createdAt) },
@@ -58,6 +58,7 @@ export default function Houses() {
           ),
         }}
       />
+      {authFailed && <Text style={s.auth}>Secret is wrong. Tap the gear.</Text>}
       <SectionList
         sections={sections}
         keyExtractor={(h) => h.property.id}
@@ -91,4 +92,5 @@ const s = StyleSheet.create({
   button: { margin: 16, marginBottom: 32, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   gear: { fontSize: 22, paddingHorizontal: 8 },
+  auth: { padding: 12, color: '#b00020', fontWeight: '600' },
 });
