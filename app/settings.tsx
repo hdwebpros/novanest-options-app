@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../src/api';
-import { set } from '../src/store';
+import { startOver } from '../src/store';
 import { kick } from '../src/uploader';
 
 export default function Settings() {
@@ -35,18 +35,13 @@ export default function Settings() {
     }
   }
 
-  function startOver() {
+  function confirmStartOver() {
     Alert.alert('Start over?', 'Clears the current property, photos list and skips on this phone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Start over',
         style: 'destructive',
-        onPress: () => {
-          // ponytail: photo files stay in documents/photos (never deleted this slice); add cleanup when storage matters.
-          set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [], current: undefined }));
-          if (router.canDismiss()) router.dismissAll();
-          router.replace('/');
-        },
+        onPress: startOver,
       },
     ]);
   }
@@ -73,7 +68,7 @@ export default function Settings() {
         </Pressable>
       </View>
       <Text style={s.result}>{result}</Text>
-      <Pressable style={[s.button, s.danger]} onPress={startOver}>
+      <Pressable style={[s.button, s.danger]} onPress={confirmStartOver}>
         <Text style={s.buttonText}>Start over</Text>
       </Pressable>
     </View>

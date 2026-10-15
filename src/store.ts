@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useSyncExternalStore } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { Item, Photo, Reason } from './logic';
@@ -62,3 +63,10 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 export const useStore = () => useSyncExternalStore(subscribe, get);
+
+// Abandon the current house on this phone. Photo files stay in documents/photos (submit's "New property" deletes them).
+export function startOver() {
+  set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [], current: undefined }));
+  if (router.canDismiss()) router.dismissAll();
+  router.replace('/');
+}

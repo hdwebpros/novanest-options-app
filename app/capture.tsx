@@ -116,8 +116,14 @@ export default function Capture() {
   const screen = (
     <Stack.Screen
       options={{
-        title: header,
-        headerTitleStyle: { fontSize: 14 },
+        headerTitle: () => (
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+              {property?.address ?? 'NovaNest'}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#666' }}>{header}</Text>
+          </View>
+        ),
         headerRight: () => (
           <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
             <Link href="/rooms" style={{ fontSize: 16, fontWeight: '600' }}>

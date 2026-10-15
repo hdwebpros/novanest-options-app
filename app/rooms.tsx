@@ -1,13 +1,13 @@
 import { Link, Stack, router } from 'expo-router';
-import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import type { Item } from '../src/logic';
-import { set, useStore } from '../src/store';
+import { set, startOver, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 const REASON = { not_there: 'not there', no_access: "can't get to it", unsafe: 'unsafe' };
 
 export default function Rooms() {
-  const { checklist, photos, skips } = useStore();
+  const { checklist, photos, skips, property } = useStore();
   const all = Object.values(photos);
   const uploaded = all.filter((p) => p.uploaded).length;
   const failed = all.filter((p) => !p.uploaded && p.error).length;
@@ -29,7 +29,7 @@ export default function Rooms() {
 
   return (
     <View style={s.page}>
-      <Stack.Screen options={{ title: 'Rooms' }} />
+      <Stack.Screen options={{ title: property?.address ?? 'Rooms' }} />
       <View style={s.queue}>
         <Text>
           {uploaded} uploaded, {all.length - uploaded - failed} waiting
@@ -69,6 +69,16 @@ export default function Rooms() {
           <Text style={s.buttonText}>Submit</Text>
         </Pressable>
       </Link>
+      <Pressable
+        onPress={() =>
+          Alert.alert('Start over?', 'Drops this house on the phone. Photos already uploaded stay on the site.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Start over', style: 'destructive', onPress: startOver },
+          ])
+        }
+      >
+        <Text style={s.leave}>Not this house? Start over</Text>
+      </Pressable>
     </View>
   );
 }
@@ -85,4 +95,5 @@ const s = StyleSheet.create({
   status: { color: '#555' },
   button: { margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  leave: { textAlign: 'center', color: '#b00020', paddingBottom: 24 },
 });
