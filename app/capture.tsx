@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { ExpoSpeechRecognitionModule as Speech, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { fetchChecklist } from '../src/api';
 import { nextItem, pickSize, progress, type Reason } from '../src/logic';
-import { get, photoFile, photosDir, set, useStore } from '../src/store';
+import { get, patchHouse, photoFile, photosDir, set, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 const SKIPS: [string, Reason][] = [
@@ -42,7 +42,8 @@ async function gpsExif(): Promise<Record<string, unknown>> {
 }
 
 export default function Capture() {
-  const { checklist, photos, skips, property, notes, current } = useStore();
+  const { checklist } = useStore();
+  const house = useHouse();
   const [perm, setPerm] = useState<'asking' | 'ok' | 'denied'>('asking');
   const [loadFailed, setLoadFailed] = useState<string>();
   const [pictureSize, setPictureSize] = useState<string>();
@@ -54,13 +55,13 @@ export default function Capture() {
   const [speechOk, setSpeechOk] = useState(true);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
-  // The item is fixed at start (a photo mid-note advances the item). finals = finished chunks, interim = chunk in progress.
-  const voice = useRef({ item: '', finals: '', interim: '' });
+  // House and item are fixed at start (a photo mid-note advances the item). finals = finished chunks, interim = chunk in progress.
+  const voice = useRef({ house: '', item: '', finals: '', interim: '' });
   function saveNote() {
-    const { item, finals, interim } = voice.current;
-    voice.current = { item: '', finals: '', interim: '' };
+    const { house, item, finals, interim } = voice.current;
+    voice.current = { house: '', item: '', finals: '', interim: '' };
     const text = (finals + interim).trim();
-    if (item && text) set((st) => ({ ...st, notes: [...st.notes, { item, text }] }));
+    if (item && text) patchHouse(house, (h) => ({ notes: [...h.notes, { item, text }] }));
   }
 
   // Never log transcript text.
@@ -113,13 +114,17 @@ export default function Capture() {
   }
   useEffect(loadChecklist, []);
 
+  if (!house) return null;
+  const { photos, skips, property, notes, current, submittedAt } = house;
+  const hid = property.id;
+
   const all = Object.values(photos);
   const failed = all.filter((p) => !p.uploaded && p.error).length;
   const waiting = all.filter((p) => !p.uploaded).length - failed;
   const header = [
     waiting > 0 && `${waiting} waiting to upload`,
     failed > 0 && `${failed} failed`,
-    waiting > 0 && !property?.token && 'house not created yet',
+    waiting > 0 && !property.token && 'house not created yet',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -130,7 +135,7 @@ export default function Capture() {
         headerTitle: () => (
           <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
-              {property?.address ?? 'NovaNest'}
+              {property.address}
             </Text>
             {!!header && <Text style={{ fontSize: 12, color: '#666' }}>{header}</Text>}
           </View>
@@ -184,12 +189,12 @@ export default function Capture() {
       const id = expo.uuidv4();
       photosDir().create({ intermediates: true, idempotent: true });
       new File(pic.uri).moveSync(photoFile(id));
-      set((st) => ({ ...st, current: undefined, photos: { ...st.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
+      patchHouse(hid, (h) => ({ current: undefined, photos: { ...h.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: Date.now() } } }));
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setSaved({ id, item: item.key, label: item.label });
       clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(undefined), 5000);
-      if (listening && !nextItem(checklist!, get().photos, skips)) Speech.stop(); // last shot: end the note so it saves
+      if (listening && !nextItem(checklist!, get().houses[hid]?.photos ?? {}, skips)) Speech.stop(); // last shot: end the note so it saves
       kick();
     } finally {
       setBusy(false);
@@ -202,17 +207,17 @@ export default function Capture() {
     if (!saved) return;
     clearTimeout(savedTimer.current);
     setSaved(undefined);
-    const p = get().photos[saved.id];
+    const p = get().houses[hid]?.photos[saved.id];
     if (p && !p.uploaded) {
-      set((st) => {
-        const photos = { ...st.photos };
+      patchHouse(hid, (h) => {
+        const photos = { ...h.photos };
         delete photos[p.id];
-        return { ...st, photos, current: p.item };
+        return { photos, current: p.item };
       });
       try {
         photoFile(p.id).delete();
       } catch {}
-    } else set((st) => ({ ...st, current: saved.item }));
+    } else patchHouse(hid, { current: saved.item });
   }
 
   function mic() {
@@ -220,7 +225,7 @@ export default function Capture() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (listening) return Speech.stop();
     if (!item) return;
-    voice.current = { item: item.key, finals: '', interim: '' };
+    voice.current = { house: hid, item: item.key, finals: '', interim: '' };
     setListening(true);
     // No recordingOptions: audio is never written to disk.
     Speech.start({ lang: 'en-US', interimResults: true, continuous: true, requiresOnDeviceRecognition: true });
@@ -231,7 +236,7 @@ export default function Capture() {
     ActionSheetIOS.showActionSheetWithOptions(
       { options: [...SKIPS.map(([label]) => label), 'Cancel'], cancelButtonIndex: SKIPS.length, title: item.label },
       (i) => {
-        if (i < SKIPS.length) set((st) => ({ ...st, current: undefined, skips: { ...st.skips, [item.key]: SKIPS[i][1] } }));
+        if (i < SKIPS.length) patchHouse(hid, (h) => ({ current: undefined, skips: { ...h.skips, [item.key]: SKIPS[i][1] } }));
       },
     );
   }
@@ -275,18 +280,26 @@ export default function Capture() {
               <Text style={s.sideText}>Skip</Text>
             </Pressable>
             <Pressable style={[s.shutter, busy && s.dim]} onPress={shoot} disabled={busy} accessibilityLabel="Take photo" />
-            <Pressable style={[s.side, listening && s.rec, !speechOk && s.dim]} onPress={mic}>
-              <Text style={s.sideText}>{listening ? 'Stop note' : speechOk ? 'Voice note' : 'Speech off'}</Text>
-            </Pressable>
+            {submittedAt ? (
+              <View style={s.side} /> // the site ignores notes after submit
+            ) : (
+              <Pressable style={[s.side, listening && s.rec, !speechOk && s.dim]} onPress={mic}>
+                <Text style={s.sideText}>{listening ? 'Stop note' : speechOk ? 'Voice note' : 'Speech off'}</Text>
+              </Pressable>
+            )}
           </View>
         </>
       ) : (
         <View style={s.center}>
-          <Link href="/submit" asChild>
-            <Pressable style={s.button}>
-              <Text style={s.buttonText}>Review and submit</Text>
-            </Pressable>
-          </Link>
+          {submittedAt ? (
+            <Text style={s.msg}>All shots taken</Text>
+          ) : (
+            <Link href="/submit" asChild>
+              <Pressable style={s.button}>
+                <Text style={s.buttonText}>Review and submit</Text>
+              </Pressable>
+            </Link>
+          )}
         </View>
       )}
     </View>

@@ -1,13 +1,16 @@
 import { Link, Stack, router } from 'expo-router';
-import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
-import type { Item } from '../src/logic';
-import { set, startOver, useStore } from '../src/store';
+import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { day, type Item } from '../src/logic';
+import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 const REASON = { not_there: 'not there', no_access: "can't get to it", unsafe: 'unsafe' };
 
 export default function Rooms() {
-  const { checklist, photos, skips, property } = useStore();
+  const { checklist } = useStore();
+  const house = useHouse();
+  if (!house) return null;
+  const { photos, skips, property, submittedAt } = house;
   const all = Object.values(photos);
   const uploaded = all.filter((p) => p.uploaded).length;
   const failed = all.filter((p) => !p.uploaded && p.error).length;
@@ -23,22 +26,13 @@ export default function Rooms() {
   }
 
   function pick(key: string) {
-    set((s) => ({ ...s, current: key }));
+    patchHouse(property.id, { current: key });
     router.push('/capture');
   }
 
   return (
     <View style={s.page}>
-      <Stack.Screen
-        options={{
-          title: property?.address ?? 'Checklist',
-          headerRight: () => (
-            <Link href="/settings" style={s.gear}>
-              ⚙︎
-            </Link>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ title: property.address }} />
       <View style={s.queue}>
         <Text>
           {uploaded} uploaded, {all.length - uploaded - failed} waiting
@@ -73,21 +67,15 @@ export default function Rooms() {
           );
         }}
       />
-      <Link href="/submit" asChild>
-        <Pressable style={s.button}>
-          <Text style={s.buttonText}>Submit</Text>
-        </Pressable>
-      </Link>
-      <Pressable
-        onPress={() =>
-          Alert.alert('Start over?', 'Drops this house on the phone. Photos already uploaded stay on the site.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Start over', style: 'destructive', onPress: startOver },
-          ])
-        }
-      >
-        <Text style={s.leave}>Drop this house and start a new one</Text>
-      </Pressable>
+      {submittedAt ? (
+        <Text style={s.submitted}>Submitted {day(submittedAt)}</Text>
+      ) : (
+        <Link href="/submit" asChild>
+          <Pressable style={s.button}>
+            <Text style={s.buttonText}>Submit</Text>
+          </Pressable>
+        </Link>
+      )}
     </View>
   );
 }
@@ -102,8 +90,7 @@ const s = StyleSheet.create({
   label: { flex: 1, fontSize: 16 },
   req: { color: '#d97706', fontSize: 12, fontWeight: '600' },
   status: { color: '#555' },
-  button: { margin: 16, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
+  button: { margin: 16, marginBottom: 32, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  leave: { textAlign: 'center', color: '#b00020', paddingBottom: 24 },
-  gear: { fontSize: 22, paddingHorizontal: 8 },
+  submitted: { textAlign: 'center', color: '#888', fontSize: 16, padding: 16, paddingBottom: 32 },
 });

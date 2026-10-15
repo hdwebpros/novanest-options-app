@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '../src/api';
-import { startOver } from '../src/store';
 import { kick } from '../src/uploader';
 
 export default function Settings() {
@@ -35,17 +34,6 @@ export default function Settings() {
     }
   }
 
-  function confirmStartOver() {
-    Alert.alert('Start over?', 'Clears the current property, photos list and skips on this phone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Start over',
-        style: 'destructive',
-        onPress: startOver,
-      },
-    ]);
-  }
-
   return (
     <View style={s.page}>
       <Stack.Screen options={{ title: 'Settings' }} />
@@ -68,9 +56,6 @@ export default function Settings() {
         </Pressable>
       </View>
       <Text style={s.result}>{result}</Text>
-      <Pressable style={[s.button, s.danger]} onPress={confirmStartOver}>
-        <Text style={s.buttonText}>Start over</Text>
-      </Pressable>
     </View>
   );
 }
@@ -81,7 +66,6 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16 },
   row: { flexDirection: 'row', gap: 12 },
   button: { flex: 1, backgroundColor: '#111', borderRadius: 10, padding: 14, alignItems: 'center' },
-  danger: { flex: 0, marginTop: 40, backgroundColor: '#b00020' },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   result: { fontSize: 16, minHeight: 22 },
 });

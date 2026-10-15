@@ -37,3 +37,6 @@ export function pickSize(sizes: string[]): string | undefined {
   const pool = big.length ? big : parsed;
   return pool.sort((a, b) => Math.abs(a.edge - 2000) - Math.abs(b.edge - 2000))[0]?.s;
 }
+
+// "Oct 15"
+export const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });

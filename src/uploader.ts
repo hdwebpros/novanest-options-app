@@ -3,7 +3,7 @@ import * as Network from 'expo-network';
 import { UploadType } from 'expo-file-system';
 import { BASE, authHeaders, createProperty, getSecret } from './api';
 import { nextPending } from './logic';
-import { get, patchPhoto, photoFile, set } from './store';
+import { get, patchHouse, patchPhoto, photoFile } from './store';
 
 const BACKOFF = [5000, 15000, 60000];
 let running = false;
@@ -35,19 +35,22 @@ function retryLater() {
 async function run() {
   const skip = new Set<string>(); // poison photos given up on for this run only
   while (true) {
-    const { property, photos, checklist } = get();
-    if (!property || !(await getSecret())) return;
+    const { houses, checklist } = get();
+    if (!(await getSecret())) return;
+    // Next house with work: not created on the site yet, or a photo still to upload.
+    const house = Object.values(houses).find((h) => !h.property.token || nextPending(h.photos, skip));
+    if (!house) {
+      failures = 0;
+      return;
+    }
+    const { property } = house;
     try {
       if (!property.token) {
         const token = await createProperty(property);
-        set((s) => (s.property?.id === property.id ? { ...s, property: { ...s.property, token } } : s));
+        patchHouse(property.id, (h) => ({ property: { ...h.property, token } }));
         continue;
       }
-      const photo = nextPending(photos, skip);
-      if (!photo) {
-        failures = 0;
-        return;
-      }
+      const photo = nextPending(house.photos, skip)!;
       const category = checklist?.find((i) => i.key === photo.item)?.category ?? photo.item;
       const url =
         `${BASE}/api/options/photos?token=${encodeURIComponent(property.token)}` +
@@ -57,7 +60,7 @@ async function run() {
         skip.add(photo.id); // should never happen; don't let it wedge the queue
         continue;
       }
-      patchPhoto(photo.id, { attempts: photo.attempts + 1 });
+      patchPhoto(property.id, photo.id, { attempts: photo.attempts + 1 });
       // Multipart filename comes from the file itself: <photoId>.jpg.
       const res = await file.upload(url, {
         uploadType: UploadType.MULTIPART,
@@ -66,12 +69,12 @@ async function run() {
         headers: await authHeaders(),
       });
       if (res.status >= 200 && res.status < 300) {
-        patchPhoto(photo.id, { uploaded: true, error: undefined });
+        patchPhoto(property.id, photo.id, { uploaded: true, error: undefined });
         failures = 0;
       } else if (res.status === 401 || res.status === 403) {
         return; // bad secret: every photo would fail; wait for the next kick (foreground / settings)
       } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-        patchPhoto(photo.id, { error: res.status });
+        patchPhoto(property.id, photo.id, { error: res.status });
         skip.add(photo.id);
       } else {
         throw new Error(`upload ${res.status}`);

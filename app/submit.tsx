@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { submitProperty } from '../src/api';
-import { photosDir, set, useStore } from '../src/store';
+import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 
 export default function Submit() {
-  const { checklist, photos, skips, notes, property } = useStore();
+  const { checklist } = useStore();
+  const house = useHouse();
   const [result, setResult] = useState<'sending' | 'done' | string>('');
+  const { photos = {}, skips = {}, notes = [], property } = house ?? {};
   const all = Object.values(photos);
   const failed = all.filter((p) => !p.uploaded && p.error).length;
   const waiting = all.filter((p) => !p.uploaded).length - failed;
@@ -30,21 +32,14 @@ export default function Submit() {
         notes,
         skipped: Object.entries(skips).map(([item, reason]) => ({ item, reason })),
       });
-      if (res.ok) setResult('done');
-      else if (res.status === 409) setResult('The site has no photos for this house yet.');
+      if (res.ok) {
+        patchHouse(property.id, { submittedAt: Date.now() });
+        setResult('done');
+      } else if (res.status === 409) setResult('The site has no photos for this house yet.');
       else setResult(`Submit failed (${res.status}). Try again.`);
     } catch {
       setResult('No connection. Try again.');
     }
-  }
-
-  // The one place local photo files are deleted, and only after the site confirmed the submit.
-  function newProperty() {
-    set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [], current: undefined }));
-    const dir = photosDir();
-    if (dir.exists) dir.delete();
-    if (router.canDismiss()) router.dismissAll();
-    router.replace('/');
   }
 
   const screen = <Stack.Screen options={{ title: 'Submit' }} />;
@@ -54,8 +49,8 @@ export default function Submit() {
       <ScrollView contentContainerStyle={s.page}>
         {screen}
         <Text style={s.big}>Submitted. Emily's house is in the Options queue.</Text>
-        <Pressable style={s.button} onPress={newProperty}>
-          <Text style={s.buttonText}>New property</Text>
+        <Pressable style={s.button} onPress={() => router.dismissAll()}>
+          <Text style={s.buttonText}>Done</Text>
         </Pressable>
       </ScrollView>
     );

@@ -1,75 +1,56 @@
-import { useEffect, useState } from 'react';
 import { Link, Stack, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { set, useStore } from '../src/store';
-import { kick } from '../src/uploader';
+import { Alert, Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import { day } from '../src/logic';
+import { removeHouse, set, useStore, type House } from '../src/store';
 
-const TYPES = [
-  ['single_family', 'Single-family house'],
-  ['townhome', 'Townhome'],
-  ['condo', 'Condo'],
-  ['duplex', 'Duplex'],
-  ['triplex', 'Triplex'],
-  ['fourplex', 'Fourplex'],
-];
-const OCCUPANCY = [
-  ['owner', 'I live there'],
-  ['tenant', 'A tenant lives there'],
-  ['vacant', 'Nobody lives there'],
-];
+export default function Houses() {
+  const { houses, checklist } = useStore();
+  const all = Object.values(houses);
+  const sections = [
+    { title: 'In progress', data: all.filter((h) => !h.submittedAt).sort((a, b) => b.createdAt - a.createdAt) },
+    { title: 'Submitted', data: all.filter((h) => h.submittedAt).sort((a, b) => b.submittedAt! - a.submittedAt!) },
+  ].filter((x) => x.data.length);
 
-function Chips({ options, value, onChange }: { options: string[][]; value: string; onChange: (v: string) => void }) {
-  return (
-    <View style={s.chips}>
-      {options.map(([key, label]) => (
-        <Pressable key={key} onPress={() => onChange(key)} style={[s.chip, value === key && s.chipOn]}>
-          <Text style={value === key ? s.chipTextOn : undefined}>{label}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
+  function line(h: House) {
+    const photos = Object.values(h.photos);
+    const failed = photos.filter((p) => !p.uploaded && p.error).length;
+    const waiting = photos.filter((p) => !p.uploaded).length - failed;
+    const done = checklist?.filter((i) => h.skips[i.key] || photos.some((p) => p.item === i.key)).length;
+    return [
+      h.submittedAt
+        ? `Submitted ${day(h.submittedAt)} · ${photos.length} photos`
+        : checklist
+          ? `${done} of ${checklist.length} shots`
+          : `${photos.length} photos`,
+      waiting > 0 && `${waiting} waiting`,
+      failed > 0 && `${failed} failed`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
 
-export default function NewProperty() {
-  const { property } = useStore();
-  const [address, setAddress] = useState('');
-  const [county, setCounty] = useState('');
-  const [type, setType] = useState('');
-  const [occupancy, setOccupancy] = useState('');
-  const [sqft, setSqft] = useState('');
+  function open(id: string) {
+    set((s) => ({ ...s, active: id }));
+    router.push('/rooms');
+  }
 
-  // Checklist sits under the camera so Capture gets a native back button. Also runs right after Create.
-  useEffect(() => {
-    if (!property) return;
-    router.replace('/rooms');
-    router.push('/capture');
-  }, [!!property]);
-  if (property) return null;
-
-  const sqftNum = sqft ? parseInt(sqft, 10) : undefined;
-  const ok = address.trim() && county.trim() && type && occupancy && (sqft === '' || (sqftNum! > 0 && /^\d+$/.test(sqft)));
-
-  function create() {
-    // Saved locally first; the uploader does the POST (now, or later when online) with this same id.
-    set((st) => ({
-      ...st,
-      property: {
-        id: expo.uuidv4(),
-        address: address.trim(),
-        county: county.trim(),
-        type,
-        occupancy,
-        finishedSqft: sqftNum,
-      },
-    }));
-    kick(); // the effect above navigates once property is set
+  function remove(h: House) {
+    const left = Object.values(h.photos).filter((p) => !p.uploaded).length;
+    Alert.alert(
+      'Remove this house from the phone?',
+      'Photos already uploaded stay on the site.' + (left ? ` ${left} not uploaded yet will be lost.` : ''),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeHouse(h.property.id) },
+      ],
+    );
   }
 
   return (
-    <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+    <View style={s.page}>
       <Stack.Screen
         options={{
-          title: 'New property',
+          title: 'Houses',
           headerRight: () => (
             <Link href="/settings" style={s.gear}>
               ⚙︎
@@ -77,33 +58,37 @@ export default function NewProperty() {
           ),
         }}
       />
-      <Text style={s.label}>Address</Text>
-      <TextInput style={s.input} value={address} onChangeText={setAddress} placeholder="123 Main St, City" />
-      <Text style={s.label}>County</Text>
-      <TextInput style={s.input} value={county} onChangeText={setCounty} />
-      <Text style={s.label}>Type</Text>
-      <Chips options={TYPES} value={type} onChange={setType} />
-      <Text style={s.label}>Who lives there</Text>
-      <Chips options={OCCUPANCY} value={occupancy} onChange={setOccupancy} />
-      <Text style={s.label}>Finished sqft (optional)</Text>
-      <TextInput style={s.input} value={sqft} onChangeText={setSqft} keyboardType="number-pad" />
-      <Pressable style={[s.button, !ok && s.disabled]} disabled={!ok} onPress={create}>
-        <Text style={s.buttonText}>Create</Text>
-      </Pressable>
-    </ScrollView>
+      <SectionList
+        sections={sections}
+        keyExtractor={(h) => h.property.id}
+        renderSectionHeader={({ section }) => <Text style={s.header}>{section.title}</Text>}
+        renderItem={({ item: h }) => (
+          <Pressable style={s.row} onPress={() => open(h.property.id)} onLongPress={() => remove(h)}>
+            <Text style={s.address} numberOfLines={1}>
+              {h.property.address}
+            </Text>
+            <Text style={s.sub}>{line(h)}</Text>
+          </Pressable>
+        )}
+        ListEmptyComponent={<Text style={s.empty}>No houses yet.</Text>}
+      />
+      <Link href="/new" asChild>
+        <Pressable style={s.button}>
+          <Text style={s.buttonText}>New house</Text>
+        </Pressable>
+      </Link>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  page: { padding: 16, gap: 8 },
-  label: { marginTop: 12, fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#999', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14 },
-  chipOn: { backgroundColor: '#111', borderColor: '#111' },
-  chipTextOn: { color: '#fff' },
-  button: { marginTop: 24, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
-  disabled: { opacity: 0.3 },
+  page: { flex: 1, backgroundColor: '#fff' },
+  header: { backgroundColor: '#f2f2f2', paddingVertical: 8, paddingHorizontal: 12, fontWeight: '700' },
+  row: { padding: 14, gap: 2, borderBottomWidth: 1, borderColor: '#eee' },
+  address: { fontSize: 16, fontWeight: '600' },
+  sub: { color: '#555' },
+  empty: { textAlign: 'center', color: '#888', fontSize: 16, marginTop: 48 },
+  button: { margin: 16, marginBottom: 32, backgroundColor: '#111', borderRadius: 10, padding: 16, alignItems: 'center' },
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   gear: { fontSize: 22, paddingHorizontal: 8 },
 });

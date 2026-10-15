@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useSyncExternalStore } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { Item, Photo, Reason } from './logic';
@@ -12,16 +11,19 @@ export type Property = {
   occupancy: string;
   finishedSqft?: number;
 };
-export type State = {
-  checklist: Item[] | null;
-  property: Property | null;
+export type House = {
+  property: Property;
   photos: Record<string, Photo>;
   skips: Record<string, Reason>;
   notes: { item?: string; text: string }[];
   current?: string; // item key picked in the room list; capture clears it after a photo/skip on it
+  submittedAt?: number;
+  createdAt: number;
 };
+// Houses are keyed by property.id.
+export type State = { checklist: Item[] | null; houses: Record<string, House>; active?: string };
 
-const empty: State = { checklist: null, property: null, photos: {}, skips: {}, notes: [] };
+const empty: State = { checklist: null, houses: {} };
 let state = empty;
 const listeners = new Set<() => void>();
 
@@ -35,7 +37,14 @@ export function load() {
     const f = new File(Paths.document, name);
     if (!f.exists) continue;
     try {
-      state = { ...empty, ...JSON.parse(f.textSync()) };
+      const raw = JSON.parse(f.textSync());
+      state = { checklist: raw.checklist ?? null, houses: raw.houses ?? {}, active: raw.active };
+      // Old one-house shape: wrap it into a house and make it active. Old keys are dropped on the next write.
+      if (raw.property) {
+        const { property, photos = {}, skips = {}, notes = [], current } = raw;
+        state.houses[property.id] = { property, photos, skips, notes, current, createdAt: Date.now() };
+        state.active = property.id;
+      }
       return;
     } catch {}
   }
@@ -53,9 +62,31 @@ export function set(fn: (s: State) => State) {
   listeners.forEach((l) => l());
 }
 
-// No-op if the photo is gone (Start over while an upload was in flight).
-export function patchPhoto(id: string, patch: Partial<Photo>) {
-  set((s) => (s.photos[id] ? { ...s, photos: { ...s.photos, [id]: { ...s.photos[id], ...patch } } } : s));
+// No-op if the house is gone (removed while an upload was in flight).
+export function patchHouse(id: string, patch: Partial<House> | ((h: House) => Partial<House>)) {
+  set((s) => {
+    const h = s.houses[id];
+    return h ? { ...s, houses: { ...s.houses, [id]: { ...h, ...(typeof patch === 'function' ? patch(h) : patch) } } } : s;
+  });
+}
+
+// No-op if the photo is gone (retake or remove while an upload was in flight).
+export function patchPhoto(houseId: string, photoId: string, patch: Partial<Photo>) {
+  patchHouse(houseId, (h) => (h.photos[photoId] ? { photos: { ...h.photos, [photoId]: { ...h.photos[photoId], ...patch } } } : {}));
+}
+
+// Drop a house from the phone, with its photo files. Photos already uploaded stay on the site.
+export function removeHouse(id: string) {
+  for (const pid of Object.keys(state.houses[id]?.photos ?? {})) {
+    try {
+      photoFile(pid).delete();
+    } catch {}
+  }
+  set((s) => {
+    const houses = { ...s.houses };
+    delete houses[id];
+    return { ...s, houses, active: s.active === id ? undefined : s.active };
+  });
 }
 
 const subscribe = (l: () => void) => {
@@ -63,10 +94,7 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 export const useStore = () => useSyncExternalStore(subscribe, get);
-
-// Abandon the current house on this phone. Photo files stay in documents/photos (submit's "New property" deletes them).
-export function startOver() {
-  set((s) => ({ ...s, property: null, photos: {}, skips: {}, notes: [], current: undefined }));
-  if (router.canDismiss()) router.dismissAll();
-  router.replace('/');
-}
+export const useHouse = (): House | undefined => {
+  const s = useStore();
+  return s.active ? s.houses[s.active] : undefined;
+};
