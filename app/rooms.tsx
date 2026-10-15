@@ -86,7 +86,7 @@ export default function Rooms() {
           ])
         }
       >
-        <Text style={s.leave}>Not this house? Start over</Text>
+        <Text style={s.leave}>Drop this house and start a new one</Text>
       </Pressable>
     </View>
   );
