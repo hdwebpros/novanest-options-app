@@ -1,19 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import { Stack, router } from 'expo-router';
-import { ActionSheetIOS, ActivityIndicator, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import { File } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { ExpoSpeechRecognitionModule as Speech, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { fetchChecklist } from '../src/api';
-import { counts, nextItem, pickSize, progress, SKIPS } from '../src/logic';
+import { copyExif, counts, nextItem, pickSize, progress, SKIPS } from '../src/logic';
 import { get, patchHouse, photoFile, photosDir, set, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
 import { AUTH_MSG, c, press, ui } from '../src/ui';
 
 const MAX = 1.3; // Dynamic Type cap for the camera overlay, where space is tight
+const UPLOAD_MAX = 4_000_000; // the site sits behind Vercel's 4.5 MB request limit
+
+// Save a photo picked from the library as `dest`. A small JPEG is kept byte-for-byte. Anything bigger, or not JPEG,
+// is resized to about 2000px on the long edge, and the original EXIF (date, GPS) is copied back in.
+async function savePicked(a: ImagePicker.ImagePickerAsset, dest: File) {
+  const src = new File(a.uri);
+  const bytes = src.bytesSync();
+  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (jpeg && bytes.length <= UPLOAD_MAX) return src.moveSync(dest);
+  const ctx = ImageManipulator.manipulate(a.uri);
+  if (Math.max(a.width, a.height) > 2000) ctx.resize(a.width >= a.height ? { width: 2000 } : { height: 2000 });
+  const out = await (await ctx.renderAsync()).saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
+  const small = new File(out.uri);
+  dest.write(jpeg ? copyExif(bytes, small.bytesSync()) : small.bytesSync());
+  small.delete();
+  src.delete();
+}
 
 // Flat GPS* keys with signed values: expo-camera's iOS code (CameraPhotoCapture.swift createGPSDict) builds the
 // {GPS} dictionary itself, taking abs() and deriving the N/S, E/W refs from the sign. Never log these.
@@ -206,6 +225,33 @@ export default function Capture() {
     }
   }
 
+  async function pickPhotos() {
+    if (!item || busy) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsMultipleSelection: true,
+      quality: 1, // below 1 re-encodes and drops EXIF
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible, // iOS hands over JPEG instead of HEIC
+    });
+    if (res.canceled) return;
+    setBusy(true);
+    try {
+      photosDir().create({ intermediates: true, idempotent: true });
+      let at = Date.now();
+      for (const a of res.assets) {
+        const id = expo.uuidv4();
+        await savePicked(a, photoFile(id));
+        patchHouse(hid, (h) => ({ current: undefined, photos: { ...h.photos, [id]: { id, item: item.key, uploaded: false, attempts: 0, at: at++ } } }));
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      kick();
+    } catch {
+      Alert.alert("Couldn't add that photo", 'Try a different photo, or take a new one.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Never started uploading: drop the photo and its file. Otherwise the site may already have it (no delete API),
   // so just go back to that item for another shot.
   const deletable = (id: string) => {
@@ -255,7 +301,14 @@ export default function Capture() {
       {screen}
       {item ? (
         <>
-          <CameraView ref={cam} style={s.camera} onCameraReady={onReady} pictureSize={pictureSize} />
+          <View style={s.camera}>
+            <CameraView ref={cam} style={s.camera} onCameraReady={onReady} pictureSize={pictureSize} />
+            <Pressable style={press(s.library, busy && s.dim)} onPress={pickPhotos} disabled={busy}>
+              <Text style={s.sideText} maxFontSizeMultiplier={MAX}>
+                Choose from Photos
+              </Text>
+            </Pressable>
+          </View>
           <View style={s.bar}>
             <View style={[s.barFill, { width: `${(done / checklist.length) * 100}%` }]} />
           </View>
@@ -342,6 +395,7 @@ const s = StyleSheet.create({
   headTitle: { fontSize: 17, fontWeight: '600', color: c.text },
   headSub: { fontSize: 12, color: c.gray },
   camera: { flex: 1 },
+  library: { position: 'absolute', left: 16, bottom: 16, minHeight: 44, paddingHorizontal: 16, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center' },
   bar: { height: 4, backgroundColor: '#3a3a3c' },
   barFill: { height: 4, backgroundColor: '#fff' },
   info: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 2 },

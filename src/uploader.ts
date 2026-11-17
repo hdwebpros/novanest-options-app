@@ -11,6 +11,15 @@ let again = false;
 let failures = 0;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
+// Items taken off the website checklist. Photos already taken for them still upload under the old category.
+const REMOVED: Record<string, string> = {
+  ext_address: 'siding_exterior',
+  roof_chimney: 'roof',
+  ext_trees: 'garage_site',
+  int_doors: 'interior_doors_fixtures',
+  bsmt_water: 'structure_foundation',
+};
+
 // Safe to call any time; at most one loop runs. A kick during a run causes one more pass after it.
 export function kick() {
   if (running) {
@@ -46,7 +55,7 @@ async function run() {
         continue;
       }
       const photo = nextPending(house.photos, skip)!;
-      const category = checklist?.find((i) => i.key === photo.item)?.category ?? photo.item;
+      const category = checklist?.find((i) => i.key === photo.item)?.category ?? REMOVED[photo.item] ?? photo.item;
       const url =
         `${BASE}/api/options/photos?token=${encodeURIComponent(property.token)}` +
         `&category=${encodeURIComponent(category)}&id=${encodeURIComponent(photo.id)}`;

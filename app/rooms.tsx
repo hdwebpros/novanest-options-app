@@ -62,10 +62,8 @@ export default function Rooms() {
               <Text style={[ui.body, s.label]}>{i.label}</Text>
               {n ? (
                 <Text style={ui.ok}>✓ {n}</Text>
-              ) : skip ? (
-                <Text style={ui.sub}>Skipped: {REASON[skip].toLowerCase()}</Text>
               ) : (
-                i.required && <Text style={s.req}>Required</Text>
+                skip && <Text style={ui.sub}>Skipped: {REASON[skip].toLowerCase()}</Text>
               )}
               <Text style={ui.chevron}>›</Text>
             </Pressable>
@@ -89,6 +87,5 @@ const s = StyleSheet.create({
   queue: { gap: 4, backgroundColor: c.bg, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: c.line },
   retry: { minHeight: 44, justifyContent: 'center' },
   label: { flex: 1 },
-  req: { fontSize: 15, fontWeight: '600', color: c.accent },
   done: { paddingVertical: 14 },
 });

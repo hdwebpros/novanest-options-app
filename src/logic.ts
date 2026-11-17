@@ -57,3 +57,28 @@ export function pickSize(sizes: string[]): string | undefined {
 
 // "Oct 15"
 export const day = (t: number) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// Copy the EXIF block (dates, GPS) from one JPEG into a resized copy of it. The resized pixels are already upright,
+// so Orientation is set to 1. Returns `dst` unchanged when `src` has no EXIF.
+export function copyExif(src: Uint8Array, dst: Uint8Array): Uint8Array {
+  const app1 = (b: Uint8Array) => {
+    for (let i = 2; i + 4 < b.length && b[i] === 0xff && b[i + 1] !== 0xda; i += 2 + ((b[i + 2] << 8) | b[i + 3])) {
+      if (b[i + 1] === 0xe1 && String.fromCharCode(...b.subarray(i + 4, i + 8)) === 'Exif') return [i, 2 + ((b[i + 2] << 8) | b[i + 3])];
+    }
+  };
+  const s = app1(src);
+  if (!s) return dst;
+  const exif = src.slice(s[0], s[0] + s[1]);
+  const t = 10; // TIFF header starts after FFE1, length, "Exif\0\0"
+  const le = exif[t] === 0x49;
+  const u16 = (o: number) => (le ? exif[o] | (exif[o + 1] << 8) : (exif[o] << 8) | exif[o + 1]);
+  const ifd = t + (le ? u16(t + 4) | (u16(t + 6) << 16) : (u16(t + 4) << 16) | u16(t + 6));
+  for (let e = ifd + 2, n = 0; n < u16(ifd) && e + 10 <= exif.length; n++, e += 12) {
+    if (u16(e) === 0x0112) [exif[e + 8], exif[e + 9]] = le ? [1, 0] : [0, 1];
+  }
+  const d = app1(dst);
+  const parts = [dst.subarray(0, 2), exif, ...(d ? [dst.subarray(2, d[0]), dst.subarray(d[0] + d[1])] : [dst.subarray(2)])];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  parts.reduce((at, p) => (out.set(p, at), at + p.length), 0);
+  return out;
+}

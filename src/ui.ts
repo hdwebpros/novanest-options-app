@@ -10,7 +10,7 @@ export const c = {
   bg: '#fff', // cards, rows, inputs
   grouped: '#fcf9ea', // ivory screen background
   primary: '#270010', // .btn-dark
-  red: '#ee2a7b', // brand pink: the one accent (errors, required, retake, recording)
+  red: '#ee2a7b', // brand pink: the one accent (errors, retake, recording)
   accent: '#ee2a7b',
   green: '#248a3d',
 };

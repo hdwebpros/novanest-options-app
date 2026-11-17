@@ -5,7 +5,9 @@ import { submitProperty } from '../src/api';
 import { counts } from '../src/logic';
 import { patchHouse, useHouse, useStore } from '../src/store';
 import { kick } from '../src/uploader';
-import { AUTH_MSG, c, press, radius, ui } from '../src/ui';
+import { AUTH_MSG, c, press, ui } from '../src/ui';
+
+const FEW = 10; // fewer good photos than this: warn before submit
 
 export default function Submit() {
   const { checklist, authFailed } = useStore();
@@ -13,8 +15,7 @@ export default function Submit() {
   const [result, setResult] = useState<'sending' | 'done' | string>('');
   const { photos = {}, skips = {}, notes = [], property } = house ?? {};
   const all = Object.values(photos);
-  const { waiting, failed, shot } = counts(photos, skips, checklist ?? null);
-  const missing = (checklist ?? []).filter((i) => i.required && !shot.has(i.key) && !skips[i.key]);
+  const { waiting, failed } = counts(photos, skips, checklist ?? null);
 
   // ponytail: kicking every 5s overrides the uploader's 60s backoff while this screen is open; fine for one phone.
   useEffect(() => {
@@ -56,40 +57,30 @@ export default function Submit() {
       </View>
     );
 
-  if (!checklist)
+  if (!all.length)
     return (
       <View style={ui.center}>
         {screen}
-        <Text style={ui.msg}>The checklist hasn’t loaded yet. Open the camera once with internet on.</Text>
+        <Text style={ui.msg}>Add at least one photo before you submit.</Text>
+        <Pressable style={press(ui.btn, s.wide)} onPress={() => router.back()}>
+          <Text style={ui.btnText}>Back</Text>
+        </Pressable>
       </View>
     );
 
-  if (missing.length)
-    return (
-      <ScrollView style={ui.page} contentContainerStyle={ui.form}>
-        {screen}
-        <Text style={ui.title}>These still need a photo or a skip</Text>
-        <View style={s.card}>
-          {missing.map((i) => (
-            <Text key={i.key} style={[ui.body, s.missing]}>
-              {i.section} · {i.label}
-            </Text>
-          ))}
-        </View>
-        <Pressable style={press(ui.btn, s.gap)} onPress={() => router.dismissTo('/capture')}>
-          <Text style={ui.btnText}>Back to camera</Text>
-        </Pressable>
-      </ScrollView>
-    );
-
   const ready = waiting === 0 && !!property?.token && result !== 'sending';
-  const confirm = () =>
-    failed
-      ? Alert.alert(`${failed} photo${failed > 1 ? 's' : ''} didn't upload`, 'Submit without them?', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Submit', onPress: submit },
-        ])
+  const good = all.length - failed;
+  const ask = (title: string, body: string, then: () => void) =>
+    Alert.alert(title, body, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Submit anyway', onPress: then },
+    ]);
+  const fewCheck = () =>
+    good < FEW
+      ? ask(`Only ${good} photo${good === 1 ? '' : 's'}`, 'There might not be a lot of information to go off of.', submit)
       : submit();
+  const confirm = () =>
+    failed ? ask(`${failed} photo${failed > 1 ? 's' : ''} didn't upload`, 'Submit without them?', fewCheck) : fewCheck();
   return (
     <ScrollView style={ui.page} contentContainerStyle={ui.form}>
       {screen}
@@ -121,8 +112,6 @@ export default function Submit() {
 const s = StyleSheet.create({
   wide: { alignSelf: 'stretch' },
   gap: { marginTop: 20 },
-  card: { backgroundColor: c.bg, borderRadius: radius, borderWidth: StyleSheet.hairlineWidth, borderColor: c.line, paddingHorizontal: 16, paddingVertical: 4 },
-  missing: { color: c.accent, paddingVertical: 10 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   retry: { minHeight: 44, justifyContent: 'center' },
 });
